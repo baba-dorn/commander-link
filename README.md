@@ -83,7 +83,7 @@ wrangler secret put METERED_SECRET_KEY   # for `wrangler dev`, use a .dev.vars f
 cd ../..
 
 # 3. Run the API (Worker) and the web app in two terminals
-pnpm dev:worker    # http://localhost:8787
+pnpm dev:worker    # http://localhost:8788
 pnpm dev:web       # http://localhost:5173
 
 # 4. Optional: run the desktop shell (loads the web app, adds global F8 + deep links)
@@ -102,7 +102,7 @@ Open `http://localhost:5173`, create a room, then open the invite in a second wi
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `VITE_API_BASE_URL` | web build env | Worker base URL (default `http://localhost:8787`). |
+| `VITE_API_BASE_URL` | web build env | Worker base URL (default `http://localhost:8788`). |
 | `METERED_APP_NAME` | Worker `[vars]` | Metered subdomain `<name>.metered.live`. Not secret. |
 | `METERED_SECRET_KEY` | Worker **secret** | Server-side token minting. Never exposed to clients. |
 | `APP_ORIGIN` | Worker `[vars]` | CORS allowlist + invite origin. |

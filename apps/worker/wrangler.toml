@@ -2,13 +2,18 @@ name = "commander-link-api"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
 
+# Pin a fixed dev port. 8787 is often taken by other local tooling, which would
+# otherwise silently answer 404 while `wrangler dev` moves to another port.
+[dev]
+port = 8788
+
 [vars]
 APP_ORIGIN = "http://localhost:5173"
 ROOM_TTL_SECONDS = "21600"
 TOKEN_TTL_SECONDS = "3600"
 MAX_ROOM_PEERS = "4"
 # Metered app subdomain (<METERED_APP_NAME>.metered.live). Not a secret.
-METERED_APP_NAME = "your-app-name"
+METERED_APP_NAME = "dorn"
 
 # METERED_SECRET_KEY is a secret and MUST NOT be placed here.
 # Set it with:  wrangler secret put METERED_SECRET_KEY

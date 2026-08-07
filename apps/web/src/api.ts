@@ -7,7 +7,7 @@ import {
   type RoomMetadata,
 } from "@commander-link/core";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8788").replace(/\/$/, "");
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(`${API_BASE}${path}`, {
