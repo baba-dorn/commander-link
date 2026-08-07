@@ -9,10 +9,11 @@ import {
   type AdmissionLease,
   type RoomMetadata,
 } from "@commander-link/core";
+import { createVoiceBackend } from "./voice";
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomGate>;
-  // Metered app subdomain: <METERED_APP_NAME>.metered.live
+  // Voice backend configuration — consumed only by the VoiceBackend implementation.
   METERED_APP_NAME: string;
   // Wrangler secret. Server-side only — never returned to any client.
   METERED_SECRET_KEY: string;
@@ -25,17 +26,27 @@ export interface Env {
 interface RoomRecord {
   createdAt: number;
   expiresAt: number;
-  meteredRoomName: string;
+  roomId: string;
+  // Whether the voice backend session has been provisioned (lazy, on first join).
+  provisioned: boolean;
+  // When the room became empty (last participant left); null while occupied.
+  emptySince: number | null;
 }
 
+// Keep an empty room briefly so a quick reconnect does not lose the session.
+const GRACE_MS = 5 * 60 * 1000;
+// Periodic safety net: prune dead heartbeats and clean up orphaned/expired rooms.
+const CLEANUP_INTERVAL_MS = 2 * 60 * 1000;
+
 export type AdmitResult =
-  | { ok: true; peerId: string; admissionId: string; meteredRoomName: string }
+  | { ok: true; peerId: string; admissionId: string; provisioned: boolean }
   | { ok: false; reason: "not_found" | "expired" | "full" };
 
 /**
- * One Durable Object per room. It is the *only* place admission/capacity is decided,
- * which serializes concurrent joins so the 4-peer limit cannot be raced. It never
- * proxies media and is not a signalling server.
+ * One Durable Object per room. Commander Link's source of truth: it owns room
+ * metadata, admission/capacity (serialized so the 4-peer limit cannot be raced),
+ * TTL, heartbeats and lifecycle/cleanup. It never proxies media, is not a
+ * signalling server, and knows nothing about any specific voice provider.
  */
 export class RoomGate extends DurableObject<Env> {
   private get maxPeers(): number {
@@ -51,14 +62,22 @@ export class RoomGate extends DurableObject<Env> {
     return (await this.ctx.storage.get<AdmissionLease[]>("admissions")) ?? [];
   }
 
-  async init(expiresAt: number, meteredRoomName: string): Promise<void> {
-    const existing = await this.getRoom();
-    if (existing) return;
+  private async ensureAlarm(): Promise<void> {
+    if ((await this.ctx.storage.getAlarm()) === null) {
+      await this.ctx.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
+    }
+  }
+
+  async init(expiresAt: number, roomId: string): Promise<void> {
+    if (await this.getRoom()) return;
     await this.ctx.storage.put<RoomRecord>("room", {
       createdAt: Date.now(),
       expiresAt,
-      meteredRoomName,
+      roomId,
+      provisioned: false,
+      emptySince: null,
     });
+    await this.ensureAlarm();
   }
 
   async meta(): Promise<RoomMetadata> {
@@ -99,15 +118,29 @@ export class RoomGate extends DurableObject<Env> {
       newAdmissionId: crypto.randomUUID(),
       newPeerId: hex(8),
     });
-
     if (!decision.ok) return { ok: false, reason: decision.reason };
+
     await this.ctx.storage.put("admissions", decision.leases);
+    if (room.emptySince !== null) {
+      room.emptySince = null;
+      await this.ctx.storage.put("room", room);
+    }
+    await this.ensureAlarm();
     return {
       ok: true,
       peerId: decision.lease.peerId,
       admissionId: decision.lease.admissionId,
-      meteredRoomName: room.meteredRoomName,
+      provisioned: room.provisioned,
     };
+  }
+
+  /** Flag the backend session as provisioned after the first join created it. */
+  async markProvisioned(): Promise<void> {
+    const room = await this.getRoom();
+    if (room && !room.provisioned) {
+      room.provisioned = true;
+      await this.ctx.storage.put("room", room);
+    }
   }
 
   async heartbeat(admissionId: string): Promise<{ ok: boolean }> {
@@ -116,14 +149,75 @@ export class RoomGate extends DurableObject<Env> {
     if (!existing) return { ok: false };
     existing.lastSeen = Date.now();
     await this.ctx.storage.put("admissions", pruneLeases(leases, Date.now()));
+    await this.ensureAlarm();
     return { ok: true };
   }
 
   async leave(admissionId: string): Promise<{ ok: boolean }> {
-    const leases = await this.getLeases();
-    const next = leases.filter((lease) => lease.admissionId !== admissionId);
-    await this.ctx.storage.put("admissions", pruneLeases(next, Date.now()));
+    const next = pruneLeases(
+      (await this.getLeases()).filter((lease) => lease.admissionId !== admissionId),
+      Date.now()
+    );
+    await this.ctx.storage.put("admissions", next);
+    if (next.length === 0) {
+      const room = await this.getRoom();
+      if (room && room.emptySince === null) {
+        room.emptySince = Date.now();
+        await this.ctx.storage.put("room", room);
+      }
+    }
+    await this.ensureAlarm();
     return { ok: true };
+  }
+
+  /**
+   * Lifecycle safety net. Runs periodically to (1) drop participants whose
+   * heartbeats timed out — covering crashes, sleep and network loss — and
+   * (2) tear down the backend session and delete the room once it has been
+   * empty past the grace period or has expired.
+   */
+  async alarm(): Promise<void> {
+    const room = await this.getRoom();
+    if (!room) return;
+
+    const now = Date.now();
+    const leases = pruneLeases(await this.getLeases(), now);
+    await this.ctx.storage.put("admissions", leases);
+
+    const expired = now >= room.expiresAt;
+
+    if (leases.length > 0 && !expired) {
+      if (room.emptySince !== null) {
+        room.emptySince = null;
+        await this.ctx.storage.put("room", room);
+      }
+      await this.ctx.storage.setAlarm(now + CLEANUP_INTERVAL_MS);
+      return;
+    }
+
+    if (!expired) {
+      // A room that was never joined lives until its TTL; only a used room is
+      // cleaned up after the empty grace period.
+      if (!room.provisioned) {
+        await this.ctx.storage.setAlarm(now + CLEANUP_INTERVAL_MS);
+        return;
+      }
+      if (room.emptySince === null) {
+        room.emptySince = now;
+        await this.ctx.storage.put("room", room);
+      }
+      if (now - room.emptySince < GRACE_MS) {
+        await this.ctx.storage.setAlarm(now + CLEANUP_INTERVAL_MS);
+        return;
+      }
+    }
+
+    // Grace elapsed or room expired: tear down the transport session, then the room.
+    if (room.provisioned) {
+      await createVoiceBackend(this.env).deleteSession(room.roomId);
+    }
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
   }
 }
 
@@ -164,45 +258,6 @@ async function readJson(request: Request): Promise<unknown> {
   return text ? JSON.parse(text) : {};
 }
 
-class MeteredError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-  }
-}
-
-/**
- * Server-to-server Metered REST call. The secret key stays here and is only ever
- * sent to metered.live — never returned to a client, never logged.
- */
-async function meteredRequest(
-  env: Env,
-  endpoint: string,
-  body: Record<string, unknown>,
-  method: "POST" | "GET" | "DELETE" = "POST"
-): Promise<Record<string, unknown>> {
-  const url = new URL(`https://${env.METERED_APP_NAME}.metered.live${endpoint}`);
-  url.searchParams.set("secretKey", env.METERED_SECRET_KEY);
-
-  const isBodyless = method === "GET" || method === "DELETE";
-  const response = await fetch(url.toString(), {
-    method,
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: isBodyless ? undefined : JSON.stringify(body),
-  });
-
-  const text = await response.text();
-  let payload: Record<string, unknown>;
-  try {
-    payload = text ? JSON.parse(text) : {};
-  } catch {
-    payload = { raw: text };
-  }
-  if (!response.ok) {
-    throw new MeteredError(`Metered API HTTP ${response.status}`, response.status);
-  }
-  return payload;
-}
-
 function ttlSeconds(value: string, fallback: number): number {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -212,39 +267,14 @@ function roomStub(env: Env, roomId: string) {
   return env.ROOMS.get(env.ROOMS.idFromName(roomId));
 }
 
-function roomUrl(env: Env, meteredRoomName: string): string {
-  return `${env.METERED_APP_NAME}.metered.live/${meteredRoomName}`;
-}
-
 async function createRoom(request: Request, env: Env): Promise<Response> {
   const roomTtl = ttlSeconds(env.ROOM_TTL_SECONDS, 21_600);
-  const roomId = hex(16); // 32 lowercase hex chars — valid Metered room name and RoomId.
+  const roomId = hex(16); // 32 lowercase hex chars — an unguessable, URL-safe room id.
   const expiresAt = Date.now() + roomTtl * 1000;
 
+  // Lazy provisioning: only record the Commander Link room. The voice backend
+  // session is created on first join, so rooms nobody enters cost no resources.
   await roomStub(env, roomId).init(expiresAt, roomId);
-
-  // Audio-only, private room capped to the same peer limit the gate enforces.
-  try {
-    await meteredRequest(env, "/api/v1/room", {
-      roomName: roomId,
-      privacy: "private",
-      audioOnlyRoom: true,
-      autoJoin: true,
-      joinVideoOn: false,
-      joinAudioOn: false,
-      enableChat: false,
-      enableScreenSharing: false,
-      showInviteBox: false,
-      maxParticipants: Number.parseInt(env.MAX_ROOM_PEERS, 10) || 4,
-      ejectAfterElapsedTimeInSec: roomTtl,
-    });
-  } catch (err) {
-    const status = err instanceof MeteredError ? err.status : 502;
-    // 400/409 means the room already exists in Metered — safe to continue.
-    if (status !== 400 && status !== 409) {
-      return json(request, env, 502, { error: "room_provisioning_failed" });
-    }
-  }
 
   const body = CreateRoomResponseSchema.parse({
     roomId,
@@ -267,24 +297,32 @@ async function joinRoom(request: Request, env: Env, roomId: string): Promise<Res
     return json(request, env, 400, { error: "invalid_request" });
   }
 
-  const admit = await roomStub(env, roomId).admit(parsed.displayName, parsed.admissionId);
+  const stub = roomStub(env, roomId);
+  const admit = await stub.admit(parsed.displayName, parsed.admissionId);
   if (!admit.ok) {
     const status = admit.reason === "full" ? 409 : 404;
     return json(request, env, status, { error: admit.reason });
   }
 
-  let token: string;
+  const backend = createVoiceBackend(env);
+
+  // First participant lazily provisions the transport session (idempotent).
+  if (!admit.provisioned) {
+    try {
+      await backend.createSession(roomId);
+      await stub.markProvisioned();
+    } catch {
+      await stub.leave(admit.admissionId);
+      return json(request, env, 502, { error: "session_provisioning_failed" });
+    }
+  }
+
+  let session;
   try {
-    const result = await meteredRequest(env, "/api/v1/token", {
-      roomName: admit.meteredRoomName,
-      name: parsed.displayName,
-      isAdmin: false,
-    });
-    token = (result.token as string) || (result.accessToken as string);
-    if (!token) throw new MeteredError("no token", 502);
+    session = await backend.createAccessToken(roomId, parsed.displayName);
   } catch {
     // Release the slot we just reserved so a token failure cannot leak capacity.
-    await roomStub(env, roomId).leave(admit.admissionId);
+    await stub.leave(admit.admissionId);
     return json(request, env, 502, { error: "token_minting_failed" });
   }
 
@@ -292,8 +330,8 @@ async function joinRoom(request: Request, env: Env, roomId: string): Promise<Res
   return json(request, env, 200, {
     roomId,
     peerId: admit.peerId,
-    token,
-    roomUrl: roomUrl(env, admit.meteredRoomName),
+    token: session.token,
+    roomUrl: session.roomUrl,
     tokenExpiresAt: new Date(Date.now() + tokenTtl * 1000).toISOString(),
     admissionId: admit.admissionId,
   });
