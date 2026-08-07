@@ -57,7 +57,7 @@ Acceptance: 4 local browser instances can join and exchange PTT audio. (manual v
 - [x] Participant list, own mute/TX state, connection status.
 - [x] Per-peer output volume control.
 - [x] Button `In Desktop-App öffnen` invoking `commanderlink://join/<roomId>` with graceful fallback.
-- [ ] Optional room code entry fallback.
+- [x] Room code / invite-link entry fallback on the home page (shared `extractRoomId` parsing).
 
 Acceptance: a browser-only user can complete the entire flow without installing software. ✅
 

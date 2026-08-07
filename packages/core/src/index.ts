@@ -11,6 +11,39 @@ import { z } from "zod";
 export const RoomIdSchema = z.string().regex(/^[A-Za-z0-9_-]{20,128}$/);
 export type RoomId = z.infer<typeof RoomIdSchema>;
 
+/**
+ * Extract a validated room id from any accepted user input: a raw room id, an
+ * HTTPS invite (`.../r/<id>`) or a deep link (`commanderlink://join/<id>`).
+ * Returns `null` when no valid room id is present. Shared by the browser join
+ * field and mirrors the desktop deep-link parsing rules.
+ */
+export function extractRoomId(input: string): RoomId | null {
+  const raw = input.trim();
+  if (!raw) return null;
+
+  const direct = RoomIdSchema.safeParse(raw);
+  if (direct.success) return direct.data;
+
+  let candidate = "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "commanderlink:") {
+      // commanderlink://join/<id>  -> host "join", pathname "/<id>"
+      candidate = url.pathname.replace(/^\/+/, "") || url.searchParams.get("room") || "";
+    } else if (url.protocol === "http:" || url.protocol === "https:") {
+      const match = url.pathname.match(/\/r\/([^/]+)/);
+      candidate = match ? match[1] : "";
+    }
+  } catch {
+    // Not a URL; fall back to substring extraction below.
+    const match = raw.match(/(?:\/r\/|join\/)([A-Za-z0-9_-]{20,128})/);
+    candidate = match ? match[1] : "";
+  }
+
+  const parsed = RoomIdSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
+
 export const DisplayNameSchema = z.string().trim().min(1).max(48);
 
 export const CreateRoomResponseSchema = z.object({

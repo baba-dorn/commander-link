@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { PttController, reducePtt, type PttEvent, type PttState } from "./index";
+import {
+  PttController,
+  extractRoomId,
+  reducePtt,
+  type PttEvent,
+  type PttState,
+} from "./index";
 
 /**
  * Security-critical: no event sequence may leave transmission enabled after a
@@ -90,5 +96,30 @@ describe("PttController", () => {
     off();
     controller.press();
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("extractRoomId", () => {
+  const ID = "4632a46d130baecd541f97d041cdfcb4"; // 32 hex chars
+
+  it("accepts a raw room id", () => {
+    expect(extractRoomId(ID)).toBe(ID);
+    expect(extractRoomId(`  ${ID}  `)).toBe(ID);
+  });
+
+  it("accepts an HTTPS invite link", () => {
+    expect(extractRoomId(`https://voice.example.org/r/${ID}`)).toBe(ID);
+    expect(extractRoomId(`http://localhost:5173/r/${ID}`)).toBe(ID);
+  });
+
+  it("accepts a commanderlink deep link", () => {
+    expect(extractRoomId(`commanderlink://join/${ID}`)).toBe(ID);
+  });
+
+  it("rejects invalid input", () => {
+    expect(extractRoomId("")).toBeNull();
+    expect(extractRoomId("not a room")).toBeNull();
+    expect(extractRoomId("https://example.org/other/path")).toBeNull();
+    expect(extractRoomId("short")).toBeNull();
   });
 });
