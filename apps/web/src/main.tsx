@@ -9,14 +9,85 @@ import {
 import "./styles.css";
 import { ApiError, createRoom, joinRoom, leaveRoom, sendHeartbeat } from "./api";
 import {
-  RoomConnection,
+  createVoiceTransport,
   type ConnectionStatus,
   type PeerView,
+  type VoiceTransport,
 } from "./connection";
 import { getBridge, isDesktop } from "./desktop";
 import type { SpeakerLevel } from "./audio-level";
+import type { TransportDiagnostics } from "./transport";
 
 const ROOM_PATH = /^\/r\/([A-Za-z0-9_-]{20,128})$/;
+
+// Development-only diagnostics: visible in `vite dev` or with `?diag` in the URL.
+const DIAGNOSTICS_ENABLED =
+  import.meta.env.DEV || new URLSearchParams(window.location.search).has("diag");
+
+function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
+  const [diag, setDiag] = useState<TransportDiagnostics | null>(null);
+
+  useEffect(() => {
+    if (!transport) return;
+    let alive = true;
+    const tick = async () => {
+      if (!alive || !transport) return;
+      try {
+        setDiag(await transport.getDiagnostics());
+      } catch {
+        // Diagnostics must never break the app.
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [transport]);
+
+  return (
+    <details className="diagnostics">
+      <summary>Diagnostik (Entwicklung)</summary>
+      {diag ? (
+        <table className="diag-table">
+          <tbody>
+            <tr>
+              <td>Raum</td>
+              <td>{diag.roomId || "–"}</td>
+            </tr>
+            <tr>
+              <td>Realtime Channel</td>
+              <td>{diag.channel || "–"}</td>
+            </tr>
+            <tr>
+              <td>Peer-ID</td>
+              <td>{diag.localPeerId ?? "–"}</td>
+            </tr>
+            <tr>
+              <td>SDK-State</td>
+              <td>{diag.state}</td>
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+        <p>Keine Verbindung.</p>
+      )}
+      <ul className="diag-peers">
+        {diag?.remotePeers.map((p) => (
+          <li key={p.id}>
+            <strong>{p.name}</strong> <span className="muted">({p.id.slice(0, 8)}…)</span>
+            <ul>
+              <li>State: {p.state}</li>
+              <li>ICE: {p.iceConnectionState}</li>
+              <li>Candidate: {p.candidateType ?? "n/a"}</li>
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 function currentRoomId(): string | null {
   const match = window.location.pathname.match(ROOM_PATH);
@@ -210,7 +281,7 @@ function JoinView({ roomId }: { roomId: string }) {
   const [pttState, setPttState] = useState<PttState>("muted");
   const [error, setError] = useState<string | null>(null);
 
-  const connectionRef = useRef<RoomConnection | null>(null);
+  const connectionRef = useRef<VoiceTransport | null>(null);
   const controllerRef = useRef<PttController | null>(null);
   const sessionRef = useRef<JoinRoomResponse | null>(null);
 
@@ -240,7 +311,7 @@ function JoinView({ roomId }: { roomId: string }) {
     setBusy(true);
     setError(null);
 
-    const connection = new RoomConnection({
+    const connection = createVoiceTransport({
       onStatus: (s) => {
         setStatus(s);
         const controller = controllerRef.current;
@@ -427,7 +498,12 @@ function JoinView({ roomId }: { roomId: string }) {
             return (
               <li key={peer.id} className={`peer-row${isSpeaking ? " speaking" : ""}`}>
                 <span className={`mic-icon${isSpeaking ? " on" : ""}`} aria-hidden="true" />
-                <span className="peer-name">{peer.name}</span>
+                <span className="peer-name">
+                  {peer.name}
+                  {peer.connectionState === "reconnecting" && (
+                    <span className="peer-reconnect"> · verbindet neu</span>
+                  )}
+                </span>
                 <input
                   className="volume"
                   type="range"
@@ -445,6 +521,8 @@ function JoinView({ roomId }: { roomId: string }) {
           })}
         </ul>
       </section>
+
+      {DIAGNOSTICS_ENABLED && <DiagnosticsPanel transport={connectionRef.current} />}
 
       {error && <p className="error">{error}</p>}
     </main>

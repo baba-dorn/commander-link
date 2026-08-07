@@ -611,6 +611,12 @@ input[type="text"]:focus-visible {
   text-overflow: ellipsis;
 }
 
+.peer-reconnect {
+  color: var(--amber);
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
 /* Volume slider */
 .volume {
   width: 100%;
@@ -652,3 +658,57 @@ input[type="text"]:focus-visible {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Development-only diagnostics panel */
+.diagnostics {
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--s-2);
+}
+
+.diagnostics summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.diag-table {
+  border-collapse: collapse;
+  margin: var(--s-1) 0;
+  width: 100%;
+}
+
+.diag-table td {
+  padding: 4px 10px 4px 0;
+  vertical-align: top;
+  word-break: break-all;
+}
+
+.diag-table td:first-child {
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.diag-peers {
+  list-style: none;
+  margin: var(--s-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.diag-peers ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 var(--s-2);
+  color: var(--muted);
+}
+
+.muted {
+  color: var(--faint);
+}
+

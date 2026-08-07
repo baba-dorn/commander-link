@@ -2,12 +2,27 @@
 
 ## P0 — freeze contracts
 
-- [x] Verify current Metered client API — adopted the Metered Video SDK (`Metered.Meeting()`) validated against a working reference app instead of `@metered-ca/realtime`; documented in `docs/vendor-notes.md`.
+- [x] Verify current Metered client API — adopted `@metered-ca/realtime` (MeteredPeer) per the official Realtime docs; documented in `docs/vendor-notes.md`.
 - [x] Verify current Cloudflare Workers + SQLite Durable Objects configuration syntax (builds clean via `wrangler deploy --dry-run`).
 - [x] Finalize shared Zod/TypeScript contracts for room create, join, leave, token response and participant/room state (`packages/core`).
 - [x] Add threat-model tests/fixtures before implementing secrets or tokens (PTT fail-closed + admission-capacity unit tests).
 
 Acceptance: contracts compile and docs match current vendor APIs. ✅
+
+## P0.5 — Realtime transport migration (Metered.Meeting → MeteredPeer)
+
+- [x] Remove the Metered Video SDK: `Metered.Meeting()`, `/api/v1/room` provisioning, Video room tokens, `roomURL`.
+- [x] Add `@metered-ca/realtime` to the shared renderer (`apps/web`); drop the Video SDK CDN script.
+- [x] Deterministic room → channel mapping: `commander-link/<room-id>` (`channelForRoom` in `packages/core`).
+- [x] Worker mints channel-scoped Realtime JWTs via `rms.metered.ca/v1/tokens` (`sk_id`/`sk_secret` Bearer) — no Video Room is created on room creation.
+- [x] `MeteredRealtimeTransport` behind the provider-independent `VoiceTransport` interface.
+- [x] Mic acquired once (`getUserMedia({ audio: true, video: false })`), kept alive; PTT toggles `track.enabled` (no renegotiation per key press).
+- [x] Remote audio per-peer `<audio>` elements + per-peer volume; presence-driven roster (`peer-joined`/`peer-left`).
+- [x] Reconnect states `connecting/connected/reconnecting/disconnected`; reconnect returns muted (fail-closed).
+- [x] Dev-only diagnostics: room id, channel, peer count, per-peer state, ICE state, selected candidate type (`host`/`srflx`/`relay`) — never credentials.
+- [x] Tests: token response contract, channel naming, participant mapping, cleanup on peer-left, no Video room provisioning.
+
+Acceptance: no `Metered.Meeting()` or Video Room provisioning remains; browser and Electron share the same transport. ✅
 
 ## P1 — shared PTT core
 
@@ -27,7 +42,7 @@ Acceptance: no tested event sequence can leave transmission enabled after a rele
 - [x] Implement `POST /v1/rooms/:id/leave` best-effort release (+ `/heartbeat` for lease keep-alive).
 - [x] Use one SQLite-backed Durable Object per room for serialized admission state.
 - [x] Enforce configured TTL and max peers (default 4), with idle-lease reclamation.
-- [x] Mint room-scoped Metered access token server-side, never a publishable/secret key to clients.
+- [x] Mint channel-scoped Metered Realtime JWT server-side (`rms.metered.ca/v1/tokens`), never a publishable/secret key to clients.
 - [x] Never return Metered secret credentials.
 - [~] Coarse request-size guard + CORS allowlist in place; explicit TODO for edge rate limiting.
 - [x] Implement `/health` with no secrets.
@@ -35,15 +50,15 @@ Acceptance: no tested event sequence can leave transmission enabled after a rele
 
 Acceptance: 4 simultaneous admissions succeed, 5th fails; expired/nonexistent room cannot mint token. ✅
 
-## P3 — Metered/WebRTC client
+## P3 — Metered Realtime / WebRTC client
 
-- [x] Create a single shared connection service (`apps/web/src/connection.ts`).
-- [x] Join with Worker-issued room-scoped access token, not a publishable/master key.
-- [x] Acquire microphone audio only (`receiveVideoStreamType: none`).
-- [x] Start local audio once and keep connection alive while muting/unmuting for PTT.
+- [x] Create a single shared connection service (`apps/web/src/connection.ts`) behind the `VoiceTransport` interface (`apps/web/src/transport.ts`).
+- [x] Join via `MeteredPeer` with a Worker-issued channel-scoped JWT (`tokenProvider`), never a publishable/master key.
+- [x] Acquire microphone audio only (`getUserMedia({ audio: true, video: false })`); add the stream before `join()`.
+- [x] Start local audio once and keep the connection alive; PTT toggles `track.enabled` for mute/unmute.
 - [x] Attach each remote audio stream to a dedicated per-peer audio element.
-- [x] Surface participant joined/left, connection/reconnect state and active speaker.
-- [x] Ensure leave tears down tracks, peers and the meeting.
+- [x] Surface participant joined/left (presence), connection/reconnect state and voice-level activity (RMS analyser).
+- [x] Ensure leave closes the `MeteredPeer`, stops local tracks and removes per-peer audio.
 
 Acceptance: 4 local browser instances can join and exchange PTT audio. (manual verification)
 
@@ -77,9 +92,9 @@ Acceptance: Windows desktop can join from HTTPS/deep link and F8 hold/release co
 
 ## P6 — networking + resilience
 
-- [ ] Test direct P2P path.
+- [x] Test direct P2P path (verified 2026-08-07: 4-peer mesh, all `host` candidates, all connected).
 - [ ] Force/test TURN relay path using Metered/Open Relay.
-- [ ] Add a safe diagnostics panel: connected peers, ICE connection state, candidate type (`host/srflx/relay`) where available; never show credentials.
+- [x] Add a safe diagnostics panel: connected peers, ICE connection state, candidate type (`host/srflx/relay`) where available; never show credentials (`?diag=1` / `vite dev`).
 - [ ] Test Windows↔Windows, Windows↔Linux/Steam Deck and browser↔desktop.
 - [ ] Test NAT/firewall scenarios where practical.
 - [ ] Test brief Wi-Fi/network interruption and verify reconnect returns muted.

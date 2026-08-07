@@ -17,10 +17,16 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   const text = await response.text();
   const payload: unknown = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    const message =
-      payload && typeof payload === "object" && "error" in payload
-        ? String((payload as { error: unknown }).error)
-        : `HTTP ${response.status}`;
+    let message = `HTTP ${response.status}`;
+    if (payload && typeof payload === "object") {
+      const record = payload as { error?: unknown; reason?: unknown };
+      if (typeof record.error === "string") {
+        message = record.error;
+        if (typeof record.reason === "string") {
+          message += ` (${record.reason})`;
+        }
+      }
+    }
     throw new ApiError(message, response.status);
   }
   return payload;

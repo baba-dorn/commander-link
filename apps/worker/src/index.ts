@@ -10,13 +10,15 @@ import {
   type RoomMetadata,
 } from "@commander-link/core";
 import { createVoiceBackend } from "./voice";
+import { VoiceBackendError } from "./voice/backend";
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomGate>;
   // Voice backend configuration — consumed only by the VoiceBackend implementation.
-  METERED_APP_NAME: string;
-  // Wrangler secret. Server-side only — never returned to any client.
-  METERED_SECRET_KEY: string;
+  // Metered Realtime Messaging key pair. Wrangler secrets, server-side only —
+  // never returned to any client.
+  METERED_REALTIME_KEY_ID: string;
+  METERED_REALTIME_SECRET: string;
   APP_ORIGIN: string;
   ROOM_TTL_SECONDS: string;
   TOKEN_TTL_SECONDS: string;
@@ -27,8 +29,8 @@ interface RoomRecord {
   createdAt: number;
   expiresAt: number;
   roomId: string;
-  // Whether the voice backend session has been provisioned (lazy, on first join).
-  provisioned: boolean;
+  // Whether anyone ever joined (so a never-used room can live until its TTL).
+  everOccupied: boolean;
   // When the room became empty (last participant left); null while occupied.
   emptySince: number | null;
 }
@@ -39,7 +41,7 @@ const GRACE_MS = 5 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 2 * 60 * 1000;
 
 export type AdmitResult =
-  | { ok: true; peerId: string; admissionId: string; provisioned: boolean }
+  | { ok: true; peerId: string; admissionId: string }
   | { ok: false; reason: "not_found" | "expired" | "full" };
 
 /**
@@ -74,7 +76,7 @@ export class RoomGate extends DurableObject<Env> {
       createdAt: Date.now(),
       expiresAt,
       roomId,
-      provisioned: false,
+      everOccupied: false,
       emptySince: null,
     });
     await this.ensureAlarm();
@@ -121,7 +123,8 @@ export class RoomGate extends DurableObject<Env> {
     if (!decision.ok) return { ok: false, reason: decision.reason };
 
     await this.ctx.storage.put("admissions", decision.leases);
-    if (room.emptySince !== null) {
+    if (!room.everOccupied || room.emptySince !== null) {
+      room.everOccupied = true;
       room.emptySince = null;
       await this.ctx.storage.put("room", room);
     }
@@ -130,17 +133,7 @@ export class RoomGate extends DurableObject<Env> {
       ok: true,
       peerId: decision.lease.peerId,
       admissionId: decision.lease.admissionId,
-      provisioned: room.provisioned,
     };
-  }
-
-  /** Flag the backend session as provisioned after the first join created it. */
-  async markProvisioned(): Promise<void> {
-    const room = await this.getRoom();
-    if (room && !room.provisioned) {
-      room.provisioned = true;
-      await this.ctx.storage.put("room", room);
-    }
   }
 
   async heartbeat(admissionId: string): Promise<{ ok: boolean }> {
@@ -173,8 +166,9 @@ export class RoomGate extends DurableObject<Env> {
   /**
    * Lifecycle safety net. Runs periodically to (1) drop participants whose
    * heartbeats timed out — covering crashes, sleep and network loss — and
-   * (2) tear down the backend session and delete the room once it has been
-   * empty past the grace period or has expired.
+   * (2) delete the room once it has been empty past the grace period or has
+   * expired. With Metered Realtime there is no transport session to tear down:
+   * a channel exists by name and idle rooms cost nothing.
    */
   async alarm(): Promise<void> {
     const room = await this.getRoom();
@@ -198,7 +192,7 @@ export class RoomGate extends DurableObject<Env> {
     if (!expired) {
       // A room that was never joined lives until its TTL; only a used room is
       // cleaned up after the empty grace period.
-      if (!room.provisioned) {
+      if (!room.everOccupied) {
         await this.ctx.storage.setAlarm(now + CLEANUP_INTERVAL_MS);
         return;
       }
@@ -212,11 +206,10 @@ export class RoomGate extends DurableObject<Env> {
       }
     }
 
-    // Grace elapsed or room expired: tear down the transport session, then the room.
-    if (room.provisioned) {
-      await createVoiceBackend(this.env).deleteSession(room.roomId);
-    }
-    await this.ctx.storage.deleteAlarm();
+    // Grace elapsed or room expired: delete the Commander Link room. We do not
+    // reschedule, so no further alarm fires. `deleteAlarm()` must NOT be called
+    // from inside the alarm handler (it throws); simply returning without
+    // setAlarm() leaves no pending alarm.
     await this.ctx.storage.deleteAll();
   }
 }
@@ -272,8 +265,9 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
   const roomId = hex(16); // 32 lowercase hex chars — an unguessable, URL-safe room id.
   const expiresAt = Date.now() + roomTtl * 1000;
 
-  // Lazy provisioning: only record the Commander Link room. The voice backend
-  // session is created on first join, so rooms nobody enters cost no resources.
+  // Only a Commander Link room record is created. No transport provider is
+  // provisioned here — Metered Realtime channels exist by name and are minted
+  // server-side at join time, so rooms nobody enters cost nothing.
   await roomStub(env, roomId).init(expiresAt, roomId);
 
   const body = CreateRoomResponseSchema.parse({
@@ -304,36 +298,29 @@ async function joinRoom(request: Request, env: Env, roomId: string): Promise<Res
     return json(request, env, status, { error: admit.reason });
   }
 
+  // Mint a short-lived, channel-scoped Metered Realtime JWT. The Commander Link
+  // peerId becomes the JWT `sub`, so a peer keeps a stable identity across
+  // reconnects (tokenProvider is re-invoked by the SDK on every reconnect).
   const backend = createVoiceBackend(env);
-
-  // First participant lazily provisions the transport session (idempotent).
-  if (!admit.provisioned) {
-    try {
-      await backend.createSession(roomId);
-      await stub.markProvisioned();
-    } catch {
-      await stub.leave(admit.admissionId);
-      return json(request, env, 502, { error: "session_provisioning_failed" });
-    }
-  }
-
   let session;
   try {
-    session = await backend.createAccessToken(roomId, parsed.displayName);
-  } catch {
+    session = await backend.createAccessToken(roomId, admit.peerId, parsed.displayName);
+  } catch (err) {
     // Release the slot we just reserved so a token failure cannot leak capacity.
     await stub.leave(admit.admissionId);
-    return json(request, env, 502, { error: "token_minting_failed" });
+    // Never log request bodies or credentials — just the safe reason code.
+    const reason = err instanceof VoiceBackendError ? err.code : "provider_unreachable";
+    console.error(`join token_minting_failed room=${roomId} reason=${reason}`);
+    return json(request, env, 502, { error: "token_minting_failed", reason });
   }
 
-  const tokenTtl = ttlSeconds(env.TOKEN_TTL_SECONDS, 3_600);
   return json(request, env, 200, {
     roomId,
     peerId: admit.peerId,
-    token: session.token,
-    roomUrl: session.roomUrl,
-    tokenExpiresAt: new Date(Date.now() + tokenTtl * 1000).toISOString(),
+    realtimeToken: session.token,
+    channel: session.channel,
     admissionId: admit.admissionId,
+    expiresAt: new Date(session.expiresAt * 1000).toISOString(),
   });
 }
 

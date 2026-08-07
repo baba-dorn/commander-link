@@ -1,23 +1,21 @@
 import type { VoiceBackend } from "./backend";
-import { MeteredVoiceBackend } from "./metered";
+import { MeteredRealtimeVoiceBackend } from "./metered";
 
 export type { VoiceBackend, VoiceSessionToken } from "./backend";
 
 // Config the active backend needs. The Worker's Env satisfies this structurally,
 // so neither the Worker nor the Durable Object references a concrete provider.
 export interface VoiceBackendEnv {
-  METERED_APP_NAME: string;
-  METERED_SECRET_KEY: string;
-  MAX_ROOM_PEERS: string;
-  ROOM_TTL_SECONDS: string;
+  METERED_REALTIME_KEY_ID: string;
+  METERED_REALTIME_SECRET: string;
+  TOKEN_TTL_SECONDS: string;
 }
 
 /** Single place that selects the concrete voice provider. */
 export function createVoiceBackend(env: VoiceBackendEnv): VoiceBackend {
-  return new MeteredVoiceBackend({
-    appName: env.METERED_APP_NAME,
-    secretKey: env.METERED_SECRET_KEY,
-    maxParticipants: Number.parseInt(env.MAX_ROOM_PEERS, 10) || 4,
-    roomTtlSeconds: Number.parseInt(env.ROOM_TTL_SECONDS, 10) || 21_600,
+  return new MeteredRealtimeVoiceBackend({
+    keyId: env.METERED_REALTIME_KEY_ID,
+    secretKey: env.METERED_REALTIME_SECRET,
+    tokenTtlSeconds: Number.parseInt(env.TOKEN_TTL_SECONDS, 10) || 3_600,
   });
 }

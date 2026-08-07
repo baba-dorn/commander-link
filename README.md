@@ -17,24 +17,30 @@ It is **not** a Discord replacement and **not** a general-purpose voice platform
 
 ```text
 Browser React client ----\
-                         +--> Cloudflare Worker / RoomGate DO --> scoped Metered JWT
-Electron + React client -/                                   
+                         +--> Cloudflare Worker / RoomGate DO --> scoped Metered Realtime JWT
+Electron + React client -/
                                    |
                                    v
-                       Metered Realtime Messaging
-                       signalling + presence + TURN metadata
+                     @metered-ca/realtime (MeteredPeer)
+                     signalling + presence + TURN metadata
                                    |
                                    v
-                         WebRTC audio-only P2P mesh
-                         Open Relay TURN only as fallback
+                     WebRTC audio-only P2P mesh (max. 4 peers)
+                     TURN relay only as fallback
 ```
 
-Cloudflare does **not** implement WebRTC signalling. The Durable Object only protects room creation/join, expiration and the 4-peer admission limit.
+Cloudflare does **not** implement WebRTC signalling. The Durable Object only
+protects room creation/join, expiration and the 4-peer admission limit. The
+client renders against a provider-independent `VoiceTransport` interface;
+`MeteredPeer` lives behind `MeteredRealtimeTransport`.
+
+Every Commander Link room maps deterministically to a Realtime channel:
+`commander-link/<room-id>`. Tokens are scoped to exactly that one channel.
 
 ## Security invariants
 
-1. Metered secret credentials never ship to clients.
-2. Clients receive short-lived, room-scoped JWTs only.
+1. Metered secret credentials (`sk_id` / `sk_secret`) never ship to clients.
+2. Clients receive short-lived, channel-scoped JWTs only (minted server-side).
 3. Only server-created room IDs are accepted.
 4. Maximum admitted peers per room is 4.
 5. Rooms expire automatically (default 6 hours).
@@ -58,8 +64,8 @@ Cloudflare does **not** implement WebRTC signalling. The Durable Object only pro
 2. The service returns an invite like `https://voice.example.org/r/<room-id>`.
 3. Other commanders open the same link in browser, or choose **Open in desktop app**.
 4. Electron receives a deep link such as `commanderlink://join/<room-id>`.
-5. Each client asks the Worker for a scoped join token.
-6. Metered connects peers and injects TURN configuration.
+5. Each client asks the Worker for a scoped Realtime JWT.
+6. `MeteredPeer` joins the room's channel, connects peers P2P and auto-injects TURN.
 7. Everyone starts muted.
 8. Hold F8 (desktop) or hold the red button (browser) to transmit.
 9. Release means mute immediately.
@@ -70,16 +76,16 @@ This repository intentionally contains the architecture, contracts, scaffolding 
 
 ## Running locally
 
-Prerequisites: Node.js 22+, pnpm 10, and a Metered account (app name + secret key).
+Prerequisites: Node.js 22+, pnpm 10, and a Metered account with **Realtime Messaging** enabled (a `sk_id` + `sk_secret` key pair from Dashboard → Realtime Messaging → Keys, and a TURN service active for TURN fallback).
 
 ```powershell
 # 1. Install
 pnpm install
 
-# 2. Configure the Worker secret (never commit it)
+# 2. Configure the Worker secrets (never commit them)
 cd apps/worker
-# set METERED_APP_NAME in wrangler.toml [vars]
-wrangler secret put METERED_SECRET_KEY   # for `wrangler dev`, use a .dev.vars file instead
+wrangler secret put METERED_REALTIME_KEY_ID    # sk_id_...
+wrangler secret put METERED_REALTIME_SECRET    # sk_secret_...
 cd ../..
 
 # 3. Run the API (Worker) and the web app in two terminals
@@ -93,7 +99,8 @@ pnpm dev:desktop
 For `wrangler dev`, put secrets in `apps/worker/.dev.vars`:
 
 ```ini
-METERED_SECRET_KEY=your-secret-key
+METERED_REALTIME_KEY_ID=sk_id_...
+METERED_REALTIME_SECRET=sk_secret_...
 ```
 
 Open `http://localhost:5173`, create a room, then open the invite in a second window to talk.
@@ -103,17 +110,18 @@ Open `http://localhost:5173`, create a room, then open the invite in a second wi
 | Variable | Where | Purpose |
 | --- | --- | --- |
 | `VITE_API_BASE_URL` | web build env | Worker base URL (default `http://localhost:8788`). |
-| `METERED_APP_NAME` | Worker `[vars]` | Metered subdomain `<name>.metered.live`. Not secret. |
-| `METERED_SECRET_KEY` | Worker **secret** | Server-side token minting. Never exposed to clients. |
+| `METERED_REALTIME_KEY_ID` | Worker **secret** | Metered Realtime key id (`sk_id_…`). Server-side token minting. Never exposed to clients. |
+| `METERED_REALTIME_SECRET` | Worker **secret** | Metered Realtime signing secret (`sk_secret_…`). Never exposed to clients. |
 | `APP_ORIGIN` | Worker `[vars]` | CORS allowlist + invite origin. |
 | `ROOM_TTL_SECONDS` | Worker `[vars]` | Room lifetime (default 21600 = 6h). |
-| `TOKEN_TTL_SECONDS` | Worker `[vars]` | Reported token lifetime hint. |
+| `TOKEN_TTL_SECONDS` | Worker `[vars]` | Minted Realtime JWT lifetime (default 3600 = 1h). |
 | `MAX_ROOM_PEERS` | Worker `[vars]` | Hard admission cap (default 4). |
 
 ## Deployment
 
-- **Worker/API:** `cd apps/worker && wrangler deploy`. Set `METERED_SECRET_KEY` via
-  `wrangler secret put` and `METERED_APP_NAME`/`APP_ORIGIN` in `wrangler.toml`.
+- **Worker/API:** `cd apps/worker && wrangler deploy`. Set
+  `METERED_REALTIME_KEY_ID` and `METERED_REALTIME_SECRET` via `wrangler secret
+  put`, and `APP_ORIGIN` in `wrangler.toml`.
 - **Web:** `pnpm --filter @commander-link/web build` → deploy `apps/web/dist` to any static host.
   A SPA fallback (`/* → /index.html`) is required so `/r/<room-id>` resolves; a Cloudflare Pages
   `_redirects` file is included.
@@ -135,6 +143,31 @@ Global key capture under Wayland is restricted. On X11 (Steam Deck Desktop Mode 
 build with the large on-screen hold-to-talk button is the guaranteed fallback on any platform.
 
 ## Troubleshooting
+
+### Join fails with `token_minting_failed` (502)
+
+The Worker could not mint a Metered Realtime JWT. `wrangler dev` logs the safe
+reason code (`console.error`); the join response carries it as `reason`:
+
+| `reason` | Meaning |
+| --- | --- |
+| `missing_credentials` | `METERED_REALTIME_KEY_ID`/`METERED_REALTIME_SECRET` are not set at all in the Worker environment (`.dev.vars` for `wrangler dev`, `wrangler secret`s for deploy). |
+| `placeholder_credentials` | The values are still `sk_id_replace-me`/`sk_secret_replace-me`. Use a real `sk_id_…`/`sk_secret_…` pair from Dashboard → Realtime Messaging → Keys. |
+| `unauthorized` | The key pair values are wrong/invalid. |
+| `channel_not_authorized` | The Realtime key's `channelPatterns` do not allow `commander-link/*`. |
+| `action_not_permitted` | The key's action set is missing one of `publish`/`subscribe`/`presence`/`send` (all four are required for WebRTC negotiation). |
+| `provider_unreachable` | The Worker could not reach `rms.metered.ca` (network/egress). |
+
+Quick check of your credentials outside the app:
+
+```powershell
+$body = '{"peerId":"probe","channels":["commander-link/probe"],"permissions":["publish","subscribe","presence","send"],"expiresInSec":3600}'
+Invoke-RestMethod -Uri "https://rms.metered.ca/v1/tokens" -Method POST -Headers @{Authorization="Bearer sk_id_YOURS:sk_secret_YOURS"} -ContentType "application/json" -Body $body
+```
+
+A `token` in the response means the credentials and channel scope are valid.
+
+### pnpm install / native binaries
 Bei einem frischen pnpm install (neuer Clone / CI) greift der Eintrag pnpm.onlyBuiltDependencies in der Root-package.json und lädt die Binaries automatisch. Falls pnpm die Build-Skripte trotzdem mal blockiert, hilft:
 
 ```

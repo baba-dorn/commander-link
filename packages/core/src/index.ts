@@ -70,14 +70,31 @@ export type JoinRoomRequest = z.infer<typeof JoinRoomRequestSchema>;
 
 export const JoinRoomResponseSchema = z.object({
   roomId: RoomIdSchema,
+  // Commander Link participant id; becomes the Metered Realtime JWT `sub` claim.
   peerId: z.string().min(1).max(128),
-  token: z.string().min(1),
-  // `<appName>.metered.live/<roomName>` — required by the Metered Video SDK `join()`.
-  roomUrl: z.string().min(1),
-  tokenExpiresAt: z.string(),
+  // Short-lived, channel-scoped Metered Realtime JWT. Never a secret/master key.
+  realtimeToken: z.string().min(1),
+  // The deterministic Realtime channel for this room (see channelForRoom).
+  channel: z.string().min(1).max(200),
   admissionId: z.string().uuid(),
+  // ISO-8601 expiry of the realtime token.
+  expiresAt: z.string().datetime(),
 });
 export type JoinRoomResponse = z.infer<typeof JoinRoomResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Realtime channel naming
+// ---------------------------------------------------------------------------
+
+// A Commander Link room maps to exactly one Metered Realtime channel. The name
+// is deterministic so every peer of the same room joins the same channel. It
+// avoids Metered's reserved prefixes (`_metered/`, `_internal/`, `_system/`)
+// and uses the slash-separated form documented by the Realtime SDK.
+export const REALTIME_CHANNEL_PREFIX = "commander-link";
+
+export function channelForRoom(roomId: RoomId): string {
+  return `${REALTIME_CHANNEL_PREFIX}/${roomId}`;
+}
 
 export const LeaveRoomRequestSchema = z.object({
   admissionId: z.string().uuid(),
