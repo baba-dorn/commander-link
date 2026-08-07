@@ -134,6 +134,15 @@ Global key capture under Wayland is restricted. On X11 (Steam Deck Desktop Mode 
 `uiohook`) F8 capture generally works; under strict Wayland compositors it may not. The browser
 build with the large on-screen hold-to-talk button is the guaranteed fallback on any platform.
 
+## Troubleshooting
+Bei einem frischen pnpm install (neuer Clone / CI) greift der Eintrag pnpm.onlyBuiltDependencies in der Root-package.json und lädt die Binaries automatisch. Falls pnpm die Build-Skripte trotzdem mal blockiert, hilft:
+
+```
+Electron: node node_modules/.pnpm/electron@<version>/node_modules/electron/install.js
+uiohook: pnpm rebuild uiohook-napi
+oder generell pnpm approve-builds
+```
+
 ## Privacy
 
 Audio only. No recording, no transcription, no chat, no video, no accounts in the MVP.
