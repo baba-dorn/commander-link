@@ -10,5 +10,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild", "uiohook-napi", "workerd"]
   }
 }

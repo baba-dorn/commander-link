@@ -67,3 +67,74 @@ Cloudflare does **not** implement WebRTC signalling. The Durable Object only pro
 ## Status
 
 This repository intentionally contains the architecture, contracts, scaffolding and Codex execution plan. `TASKS.md` defines what must be completed before release. Do not claim production-readiness until every MVP acceptance criterion passes.
+
+## Running locally
+
+Prerequisites: Node.js 22+, pnpm 10, and a Metered account (app name + secret key).
+
+```powershell
+# 1. Install
+pnpm install
+
+# 2. Configure the Worker secret (never commit it)
+cd apps/worker
+# set METERED_APP_NAME in wrangler.toml [vars]
+wrangler secret put METERED_SECRET_KEY   # for `wrangler dev`, use a .dev.vars file instead
+cd ../..
+
+# 3. Run the API (Worker) and the web app in two terminals
+pnpm dev:worker    # http://localhost:8787
+pnpm dev:web       # http://localhost:5173
+
+# 4. Optional: run the desktop shell (loads the web app, adds global F8 + deep links)
+pnpm dev:desktop
+```
+
+For `wrangler dev`, put secrets in `apps/worker/.dev.vars`:
+
+```ini
+METERED_SECRET_KEY=your-secret-key
+```
+
+Open `http://localhost:5173`, create a room, then open the invite in a second window to talk.
+
+## Configuration
+
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | web build env | Worker base URL (default `http://localhost:8787`). |
+| `METERED_APP_NAME` | Worker `[vars]` | Metered subdomain `<name>.metered.live`. Not secret. |
+| `METERED_SECRET_KEY` | Worker **secret** | Server-side token minting. Never exposed to clients. |
+| `APP_ORIGIN` | Worker `[vars]` | CORS allowlist + invite origin. |
+| `ROOM_TTL_SECONDS` | Worker `[vars]` | Room lifetime (default 21600 = 6h). |
+| `TOKEN_TTL_SECONDS` | Worker `[vars]` | Reported token lifetime hint. |
+| `MAX_ROOM_PEERS` | Worker `[vars]` | Hard admission cap (default 4). |
+
+## Deployment
+
+- **Worker/API:** `cd apps/worker && wrangler deploy`. Set `METERED_SECRET_KEY` via
+  `wrangler secret put` and `METERED_APP_NAME`/`APP_ORIGIN` in `wrangler.toml`.
+- **Web:** `pnpm --filter @commander-link/web build` → deploy `apps/web/dist` to any static host.
+  A SPA fallback (`/* → /index.html`) is required so `/r/<room-id>` resolves; a Cloudflare Pages
+  `_redirects` file is included.
+- **Desktop:** `pnpm --filter @commander-link/desktop build`, then package with your Electron
+  packager. The app registers the `commanderlink://` protocol on Windows/Linux.
+
+## Deep links & the desktop app
+
+- Primary invite is always HTTPS `/r/<room-id>` so a browser is a valid fallback.
+- The desktop app registers `commanderlink://join/<room-id>` and routes second launches into the
+  existing window (single instance).
+- Global push-to-talk uses a native key hook (`uiohook-napi`) so **F8 hold/release works while the
+  game or another app has focus** — something `globalShortcut` cannot do (no key-up event).
+
+## Steam Deck / Linux notes
+
+Global key capture under Wayland is restricted. On X11 (Steam Deck Desktop Mode / gaming mode via
+`uiohook`) F8 capture generally works; under strict Wayland compositors it may not. The browser
+build with the large on-screen hold-to-talk button is the guaranteed fallback on any platform.
+
+## Privacy
+
+Audio only. No recording, no transcription, no chat, no video, no accounts in the MVP.
+

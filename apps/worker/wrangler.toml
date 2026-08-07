@@ -7,6 +7,11 @@ APP_ORIGIN = "http://localhost:5173"
 ROOM_TTL_SECONDS = "21600"
 TOKEN_TTL_SECONDS = "3600"
 MAX_ROOM_PEERS = "4"
+# Metered app subdomain (<METERED_APP_NAME>.metered.live). Not a secret.
+METERED_APP_NAME = "your-app-name"
+
+# METERED_SECRET_KEY is a secret and MUST NOT be placed here.
+# Set it with:  wrangler secret put METERED_SECRET_KEY
 
 [[durable_objects.bindings]]
 name = "ROOMS"
