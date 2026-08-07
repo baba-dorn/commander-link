@@ -5,5 +5,5 @@
   "type": "module",
   "scripts": {"dev":"wrangler dev","build":"wrangler deploy --dry-run","typecheck":"tsc --noEmit","test":"vitest run"},
   "dependencies": {"@commander-link/core":"workspace:*"},
-  "devDependencies": {"@cloudflare/workers-types":"^4.20260801.0","typescript":"^5.9.0","vitest":"^3.2.0","wrangler":"^4.28.0"}
+  "devDependencies": {"@cloudflare/workers-types":"^5.20260804.1","typescript":"^5.9.0","vitest":"^3.2.0","wrangler":"^4.28.0"}
 }
