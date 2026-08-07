@@ -1,0 +1,9 @@
+{
+  "name": "@commander-link/core",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {"typecheck":"tsc --noEmit","build":"tsc --noEmit","test":"vitest run"},
+  "dependencies": {"zod":"^4.0.0"},
+  "devDependencies": {"typescript":"^5.9.0","vitest":"^3.2.0"}
+}

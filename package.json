@@ -1,0 +1,14 @@
+{
+  "name": "commander-link",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @commander-link/web dev",
+    "dev:worker": "pnpm --filter @commander-link/worker dev",
+    "dev:desktop": "pnpm --filter @commander-link/desktop dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}

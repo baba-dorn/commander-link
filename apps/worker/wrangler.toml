@@ -1,0 +1,17 @@
+name = "commander-link-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[vars]
+APP_ORIGIN = "http://localhost:5173"
+ROOM_TTL_SECONDS = "21600"
+TOKEN_TTL_SECONDS = "3600"
+MAX_ROOM_PEERS = "4"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomGate"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomGate"]
