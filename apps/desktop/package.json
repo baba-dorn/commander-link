@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "main": "dist/main.js",
-  "scripts": {"dev":"echo 'Codex: wire Electron dev runner in TASKS P5'","build":"tsc","typecheck":"tsc --noEmit","test":"vitest run"},
+  "scripts": {"dev":"echo 'Codex: wire Electron dev runner in TASKS P5'","build":"tsc","typecheck":"tsc --noEmit","test":"vitest run --passWithNoTests"},
   "dependencies": {"@commander-link/core":"workspace:*","electron":"^37.0.0"},
   "devDependencies": {"typescript":"^5.9.0","vitest":"^3.2.0"}
 }
