@@ -4,6 +4,11 @@ import type {
   MeteredParticipant,
   MeteredTrackItem,
 } from "./metered";
+import {
+  AudioLevelMonitor,
+  DEFAULT_AUDIO_LEVEL_CONFIG,
+  type SpeakerLevel,
+} from "./audio-level";
 
 export interface PeerView {
   id: string;
@@ -22,6 +27,7 @@ export interface ConnectionCallbacks {
   onStatus(status: ConnectionStatus): void;
   onPeers(peers: PeerView[]): void;
   onActiveSpeaker(name: string | null): void;
+  onSpeakerLevels(levels: SpeakerLevel[]): void;
   onError(message: string): void;
   onReconnect(): void;
 }
@@ -46,12 +52,18 @@ export class RoomConnection {
   private readonly volumes = new Map<string, number>();
   private participants: MeteredParticipant[] = [];
   private readonly sink: HTMLElement;
+  private readonly monitor: AudioLevelMonitor;
+  private localParticipantId = "";
 
   constructor(private readonly callbacks: ConnectionCallbacks) {
     this.sink = document.createElement("div");
     this.sink.setAttribute("aria-hidden", "true");
     this.sink.style.display = "none";
     document.body.append(this.sink);
+
+    this.monitor = new AudioLevelMonitor(DEFAULT_AUDIO_LEVEL_CONFIG, (levels) => {
+      this.callbacks.onSpeakerLevels(levels);
+    });
   }
 
   get isConnected(): boolean {
@@ -79,10 +91,18 @@ export class RoomConnection {
 
     meeting.on("onlineParticipants", (list) => {
       this.participants = list ?? [];
+      this.syncParticipantNames();
       this.emitPeers();
     });
-    meeting.on("participantJoined", () => this.emitPeers());
-    meeting.on("participantLeft", () => this.emitPeers());
+    meeting.on("participantJoined", () => {
+      this.syncParticipantNames();
+      this.emitPeers();
+    });
+    meeting.on("participantLeft", (p) => {
+      const id = participantId(p);
+      if (id) this.monitor.removeParticipant(id);
+      this.emitPeers();
+    });
     meeting.on("activeSpeaker", (info) => this.callbacks.onActiveSpeaker(info?.name ?? null));
 
     meeting.on("remoteTrackStarted", (item: MeteredTrackItem) => {
@@ -93,13 +113,26 @@ export class RoomConnection {
       this.detachRemoteAudio(item.streamId);
     });
 
-    await meeting.join({
+    meeting.on("localTrackStarted", (item: MeteredTrackItem) => {
+      if (item.type !== "audio") return;
+      const name = this.resolveParticipantName(this.localParticipantId) || displayName;
+      this.monitor.addTrack(item.streamId, this.localParticipantId, item.track, name);
+    });
+
+    meeting.on("localTrackStopped", (item: MeteredTrackItem) => {
+      if (item.type !== "audio") return;
+      this.monitor.removeTrack(item.streamId);
+      this.monitor.resetLevel(this.localParticipantId);
+    });
+
+    const info = await meeting.join({
       roomURL: session.roomUrl,
       name: displayName,
       accessToken: session.token,
       receiveAudioStreamType: "only_individual",
       receiveVideoStreamType: "none",
     });
+    this.localParticipantId = info.participantSessionId ?? "";
 
     // Acquire the microphone once, then immediately mute. We keep the producer
     // alive and only toggle mute for PTT, so peers stay connected.
@@ -108,6 +141,7 @@ export class RoomConnection {
     await meeting.muteLocalAudio();
 
     this.participants = meeting.getOnlineParticipants();
+    this.syncParticipantNames();
     this.emitPeers();
     this.callbacks.onStatus("connected");
   }
@@ -147,7 +181,9 @@ export class RoomConnection {
     this.meeting = null;
     this.audioStarted = false;
     for (const id of [...this.audioElements.keys()]) this.detachRemoteAudio(id);
+    this.monitor.dispose();
     this.participants = [];
+    this.localParticipantId = "";
     this.emitPeers();
     if (meeting) {
       try {
@@ -169,6 +205,9 @@ export class RoomConnection {
     this.audioElements.set(peerId, audio);
     this.sink.append(audio);
     void audio.play().catch(() => {});
+
+    const name = this.resolveParticipantName(peerId);
+    this.monitor.addTrack(item.streamId, peerId, item.track, name);
   }
 
   private detachRemoteAudio(key: string): void {
@@ -179,6 +218,19 @@ export class RoomConnection {
       el.remove();
       this.audioElements.delete(key);
     }
+    this.monitor.removeTrack(key);
+  }
+
+  private syncParticipantNames(): void {
+    for (const p of this.participants) {
+      const id = participantId(p);
+      if (id) this.monitor.setParticipantName(id, participantName(p));
+    }
+  }
+
+  private resolveParticipantName(peerId: string): string {
+    const p = this.participants.find((p) => participantId(p) === peerId);
+    return p ? participantName(p) : "";
   }
 
   private emitPeers(): void {

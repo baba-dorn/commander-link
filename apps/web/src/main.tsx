@@ -14,6 +14,7 @@ import {
   type PeerView,
 } from "./connection";
 import { getBridge, isDesktop } from "./desktop";
+import type { SpeakerLevel } from "./audio-level";
 
 const ROOM_PATH = /^\/r\/([A-Za-z0-9_-]{20,128})$/;
 
@@ -205,15 +206,13 @@ function JoinView({ roomId }: { roomId: string }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<ConnectionStatus>("idle");
   const [peers, setPeers] = useState<PeerView[]>([]);
-  const [speakingRemotes, setSpeakingRemotes] = useState<string[]>([]);
+  const [speakerLevels, setSpeakerLevels] = useState<SpeakerLevel[]>([]);
   const [pttState, setPttState] = useState<PttState>("muted");
   const [error, setError] = useState<string | null>(null);
 
   const connectionRef = useRef<RoomConnection | null>(null);
   const controllerRef = useRef<PttController | null>(null);
   const sessionRef = useRef<JoinRoomResponse | null>(null);
-  // name -> last time Metered reported them as active speaker.
-  const recentSpeakersRef = useRef<Map<string, number>>(new Map());
 
   // Translate PTT state into the actual microphone action. Fail-closed: anything
   // that is not "transmitting" mutes.
@@ -249,9 +248,10 @@ function JoinView({ roomId }: { roomId: string }) {
         if (s === "disconnected" || s === "reconnecting") controller.disconnect();
       },
       onPeers: setPeers,
-      onActiveSpeaker: (speaker) => {
-        if (speaker) recentSpeakersRef.current.set(speaker, Date.now());
+      onActiveSpeaker: () => {
+        // Kept as optional metadata; visual speaker detection uses audio levels.
       },
+      onSpeakerLevels: setSpeakerLevels,
       onError: setError,
       onReconnect: () => controllerRef.current?.reconnect(),
     });
@@ -302,23 +302,21 @@ function JoinView({ roomId }: { roomId: string }) {
     };
   }, [joined, roomId]);
 
-  // Derive who is currently speaking from the activeSpeaker signal (no audio analysis).
-  useEffect(() => {
-    if (!joined) return;
-    const timer = window.setInterval(() => {
-      const now = Date.now();
-      const map = recentSpeakersRef.current;
-      const active: string[] = [];
-      for (const [name, seen] of map) {
-        if (now - seen < 700) active.push(name);
-        else map.delete(name);
-      }
-      setSpeakingRemotes((prev) =>
-        prev.length === active.length && prev.every((n, i) => n === active[i]) ? prev : active
-      );
-    }, 250);
-    return () => window.clearInterval(timer);
-  }, [joined]);
+  // Derive who is currently speaking from the audio level analysis.
+  const speakingRemotes = useMemo(() => {
+    return speakerLevels
+      .filter((s) => s.speaking)
+      .map((s) => {
+        const peer = peers.find((p) => p.id === s.participantId);
+        return peer?.name ?? "";
+      })
+      .filter((name) => name.length > 0);
+  }, [speakerLevels, peers]);
+
+  const maxSpeakerLevel = useMemo(() => {
+    if (speakerLevels.length === 0) return 0;
+    return speakerLevels.reduce((max, s) => (s.speaking ? Math.max(max, s.level) : max), 0);
+  }, [speakerLevels]);
 
   // Global fail-closed events + desktop global PTT.
   useEffect(() => {
@@ -403,6 +401,7 @@ function JoinView({ roomId }: { roomId: string }) {
           sub={circle.sub}
           active={speaking}
           own={own}
+          speakerLevel={maxSpeakerLevel}
           onPress={() => controllerRef.current?.press()}
           onRelease={() => controllerRef.current?.release()}
         />
@@ -423,7 +422,8 @@ function JoinView({ roomId }: { roomId: string }) {
         <ul className="peer-list">
           {peers.length === 0 && <li className="peer-empty">Noch niemand online.</li>}
           {peers.map((peer) => {
-            const isSpeaking = speakingRemotes.includes(peer.name);
+            const levelInfo = speakerLevels.find((s) => s.participantId === peer.id);
+            const isSpeaking = levelInfo?.speaking ?? false;
             return (
               <li key={peer.id} className={`peer-row${isSpeaking ? " speaking" : ""}`}>
                 <span className={`mic-icon${isSpeaking ? " on" : ""}`} aria-hidden="true" />
@@ -471,6 +471,7 @@ function PttButton({
   sub,
   active,
   own,
+  speakerLevel,
   onPress,
   onRelease,
 }: {
@@ -478,14 +479,17 @@ function PttButton({
   sub: string;
   active: boolean;
   own: boolean;
+  speakerLevel: number;
   onPress: () => void;
   onRelease: () => void;
 }) {
   const ref = useRef<HTMLButtonElement | null>(null);
+  const scale = active ? 1 + (speakerLevel / 100) * 0.15 : 1;
   return (
     <button
       ref={ref}
       className={`ptt${active ? " active" : ""}${own ? " own" : ""}`}
+      style={{ "--speaker-scale": scale } as React.CSSProperties}
       aria-pressed={own}
       aria-label="Push-to-talk: gedrückt halten zum Sprechen"
       onPointerDown={(e) => {
