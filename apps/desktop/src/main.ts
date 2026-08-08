@@ -3,7 +3,7 @@ import path from "node:path";
 import { uIOhook, UiohookKey } from "uiohook-napi";
 
 const DEV_WEB_URL = "http://localhost:5173";
-const PROD_WEB_URL = "https://commander-link.joachim-happel.workers.dev";
+const PROD_WEB_URL = "https://commander-link.joinoops.win";
 
 const WEB_URL =
   process.env.COMMANDER_LINK_WEB_URL ??
