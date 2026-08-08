@@ -8,3 +8,4 @@ dist/
 *.log
 release/
 apps/worker/.dev.vars
+apps/discord/.dev.vars

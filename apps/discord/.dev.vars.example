@@ -1,0 +1,22 @@
+# apps/discord/.dev.vars  (copy to .dev.vars for `wrangler dev` — never commit)
+
+# --- Secrets (never commit) ---
+# Shared with the Commander Link API worker (commander-link-api). Server-to-server
+# only. Used for the later Phase-2 lockdown of POST /v1/rooms; in Phase 1 it is
+# sent by the Discord worker but not yet enforced by the API.
+ROOM_CREATE_SECRET=replace-me-long-random-secret
+
+# Discord bot token. Development/tooling only — used only by
+# scripts/register-command.ts. NOT required by the runtime worker.
+DISCORD_BOT_TOKEN=replace-me
+
+# --- Safe identifiers / configuration (may be Worker vars or secrets) ---
+# Commanders' role id is non-secret but is kept here so no operational value is
+# committed. Obtain ids with Developer Mode enabled, right-click -> Copy ID.
+DISCORD_PUBLIC_KEY=replace-me
+DISCORD_APPLICATION_ID=replace-me
+DISCORD_GUILD_ID=replace-me
+DISCORD_COMMANDER_ROLE_ID=replace-me
+
+# Commander Link API (worker) base URL.
+COMMANDER_LINK_API_URL=http://localhost:8788

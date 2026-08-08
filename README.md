@@ -53,6 +53,9 @@ Every Commander Link room maps deterministically to a Realtime channel:
 - `apps/web` — React/Vite browser app and shared renderer UI.
 - `apps/desktop` — Electron main/preload shell, deep links and global PTT.
 - `apps/worker` — Cloudflare Worker + one SQLite-backed Durable Object per room.
+- `apps/discord` — Cloudflare Worker handling Discord HTTP Interactions; authorizes the
+  `/commander` slash command (signature + guild + Commander role) and triggers the existing
+  room-creation API. Authorization entry point only, not a Gateway/voice bot.
 - `packages/core` — shared types, room/API contracts and PTT state machine.
 - `docs/` — product, architecture, security, networking and acceptance criteria.
 - `AGENTS.md` — binding Codex implementation instructions.

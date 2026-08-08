@@ -1,0 +1,24 @@
+name = "commander-link-discord"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# Commander Link Discord interaction worker.
+#
+# Safe identifiers may be set here as [vars]. Secrets (DISCORD_PUBLIC_KEY is
+# not a secret but is simplest left out of repo; the REST/register variables
+# and ROOM_CREATE_SECRET / DISCORD_BOT_TOKEN ARE secrets) must NOT be placed in
+# this file. Set them with:
+#   wrangler secret put ROOM_CREATE_SECRET
+#   wrangler secret put DISCORD_BOT_TOKEN
+# For `wrangler dev`, put all values in apps/discord/.dev.vars instead.
+#
+# Safe (non-secret) vars may alternatively live in [vars] below. We keep them
+# out of the repo and in .dev.vars / secrets so no operational value is ever
+# committed. The registration token (DISCORD_BOT_TOKEN) is development/tooling
+# only and is not required by the runtime worker.
+[vars]
+# COMMANDER_LINK_API_URL = "https://commander-link-api.<account>.workers.dev"
+# DISCORD_PUBLIC_KEY = ""
+# DISCORD_APPLICATION_ID = ""
+# DISCORD_GUILD_ID = ""
+# DISCORD_COMMANDER_ROLE_ID = ""

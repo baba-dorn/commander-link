@@ -1,0 +1,26 @@
+{
+  "name": "@commander-link/discord",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "test": "vitest run --passWithNoTests",
+    "register:command": "tsx scripts/register-command.ts"
+  },
+  "dependencies": {
+    "@commander-link/core": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.28.0",
+    "tsx": "^4.19.2"
+  }
+}
