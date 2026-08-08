@@ -9,7 +9,7 @@ port = 8788
 
 [vars]
 #APP_ORIGIN = "http://localhost:5173"
-APP_ORIGIN = "https://commander-link.joachim-happel.workers.dev"
+APP_ORIGIN = "https://commander-link.joinoops.win"
 ROOM_TTL_SECONDS = "21600"
 TOKEN_TTL_SECONDS = "3600"
 MAX_ROOM_PEERS = "4"
