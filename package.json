@@ -8,7 +8,7 @@
     "dev:web": "pnpm --filter @commander-link/web dev",
     "dev:worker": "pnpm --filter @commander-link/worker dev",
     "dev:discord": "pnpm --filter @commander-link/discord dev",
-    "deploy:discord": "pnpm --filter @commander-link/discord deploy",
+    "deploy:discord": "pnpm --filter @commander-link/discord wrangler:deploy",
     "register:discord:command": "pnpm --filter @commander-link/discord register:command",
     "dev:desktop": "pnpm --filter @commander-link/desktop dev",
     "dev:desktop:remote": "cross-env COMMANDER_LINK_WEB_URL=https://commander-link.joinoops.win pnpm --filter @commander-link/desktop dev",
