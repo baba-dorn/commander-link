@@ -345,6 +345,34 @@ input[type="text"]:focus-visible {
   text-decoration: underline;
 }
 
+/* Windows desktop download CTA (landing) */
+.desktop-download {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: var(--s-2) 0 0;
+  text-align: center;
+}
+
+.desktop-download-sub {
+  color: var(--faint);
+  font-size: 0.82rem;
+}
+
+/* Windows desktop fallback next to "Open in desktop app" (join gate) */
+.desktop-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  align-items: center;
+  margin-top: var(--s-1);
+}
+
+.desktop-fallback-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .row {
   display: flex;
   gap: var(--s-1);

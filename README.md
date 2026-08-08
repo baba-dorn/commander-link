@@ -136,6 +136,86 @@ Open `http://localhost:5173`, create a room, then open the invite in a second wi
 - Global push-to-talk uses a native key hook (`uiohook-napi`) so **F8 hold/release works while the
   game or another app has focus** — something `globalShortcut` cannot do (no key-up event).
 
+## Desktop App
+
+### Windows installer
+
+Users install Commander Link for Windows from the **latest release**:
+
+- Browser CTA: the hosted web app links to the latest GitHub Release
+  (`https://github.com/baba-dorn/commander-link/releases/latest`).
+- Installer artifact: `Commander-Link-Setup-<version>.exe` (NSIS, user-install, Start Menu +
+  optional desktop shortcut, uninstaller, selectable install directory).
+- The installer preserves the `commanderlink://` protocol registration.
+
+> **SmartScreen / code signing:** the installer is currently **unsigned**. Windows SmartScreen may
+> show an "Unknown publisher" / "More info" warning when you run it — select "More info" → "Run
+> anyway". Public/production distribution should eventually use Authenticode code signing; this is
+> intentionally not configured yet.
+
+### Current web URL behaviour
+
+The desktop shell always loads the hosted production web app
+(`https://commander-link.joachim-happel.workers.dev`) because packaging runs with `NODE_ENV`
+already set. During `pnpm dev` (or `pnpm dev:desktop`) it loads the local Vite dev server at
+`http://localhost:5173`. Override for testing:
+
+```powershell
+# dev shell pointed at the deployed web app
+$env:COMMANDER_LINK_WEB_URL="https://commander-link.joachim-happel.workers.dev"
+pnpm dev:desktop
+```
+
+### Deep link handling
+
+- Installed app registers `commanderlink://` during install (NSIS + electron-builder `protocols`) **and**
+  at runtime via `setAsDefaultProtocolClient` in the packaged app (you don't rely on dev-mode only).
+- A link like `commanderlink://join/<room-id>` launches the app if it is closed, and a running
+  instance **receives the link and focuses itself** (single-instance lock + `second-instance` event).
+- The renderer never touches the protocol; deep-link room IDs are routed through the narrow preload
+  bridge. Electron keeps `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
+
+### Local build (from repo root)
+
+Prerequisites: Node.js 22+, pnpm 10. (Electron + `uiohook-napi` build scripts are allowed via
+`pnpm.onlyBuiltDependencies`.)
+
+```powershell
+# unpacked/debug app (for quick iteration): apps/desktop/release/win-unpacked/
+pnpm dist:desktop:dir
+
+# production Windows NSIS installer: apps/desktop/release/Commander-Link-Setup-<version>.exe
+pnpm dist:desktop:win
+```
+
+Equivalent `--filter` forms: `pnpm --filter @commander-link/desktop dist:dir` /
+`pnpm --filter @commander-link/desktop dist:win`.
+
+### Packaging notes
+
+- `apps/desktop` — electron-builder config lives in `electron-builder.config.cjs` (NSIS, appId
+  `de.dorn.commanderlink`, `commanderlink` protocol, `apps/desktop/release` output).
+- Only `dist/**` (compiled main + preload) and runtime dependencies are packaged; source files are
+  excluded. The renderer is **not** bundled — the app loads the hosted web app.
+- `uiohook-napi` ships prebuilt N-API binaries and is unpacked from asar (`asarUnpack`) so the
+  native module and global F8 keep working in the packaged app.
+- Icon: `apps/desktop/assets/icon.ico`. If absent, packaging falls back to the Electron default so a
+  build is never blocked. Add a real icon before a public release.
+- Keep runtime deps in the desktop `dependencies`; `@commander-link/core` is type-only there and
+  lives in `devDependencies`.
+
+### Release flow (GitHub Releases)
+
+Releases are automated by `.github/workflows/release-desktop.yml`:
+
+1. Update the desktop version (`apps/desktop/package.json`), commit and push.
+2. Tag the release: `git tag v0.1.0`
+3. Push the tag: `git push origin v0.1.0`
+4. The workflow typechecks, tests, builds, packages the Windows installer and creates/updates the
+   GitHub Release tagged `v<version>` (title `Commander Link v<version>`) with the `.exe` attached.
+
+Artifacts: `apps/desktop/release/` locally; the attached installer on the GitHub Release.
+
 ## Steam Deck / Linux notes
 
 Global key capture under Wayland is restricted. On X11 (Steam Deck Desktop Mode / gaming mode via

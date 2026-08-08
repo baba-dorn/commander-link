@@ -14,7 +14,12 @@ import {
   type PeerView,
   type VoiceTransport,
 } from "./connection";
-import { getBridge, isDesktop } from "./desktop";
+import {
+  getBridge,
+  isDesktop,
+  showWindowsDownload,
+  WINDOWS_DOWNLOAD_URL,
+} from "./desktop";
 import type { SpeakerLevel } from "./audio-level";
 import type { TransportDiagnostics } from "./transport";
 
@@ -240,6 +245,16 @@ function HomeView({ onEnterRoom }: { onEnterRoom: (id: string) => void }) {
           {joinError && <p className="error">{joinError}</p>}
         </section>
       </div>
+
+      {showWindowsDownload() && (
+        <p className="desktop-download">
+          Commander Link für Windows?{" "}
+          <a className="link" href={WINDOWS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+            Desktop-App herunterladen
+          </a>
+          <span className="desktop-download-sub"> · mit globaler F8-Push-to-Talk-Taste</span>
+        </p>
+      )}
     </main>
   );
 }
@@ -446,9 +461,17 @@ function JoinView({ roomId }: { roomId: string }) {
           </button>
           {error && <p className="error">{error}</p>}
           {!desktop && (
-            <a className="link" href={`commanderlink://join/${roomId}`}>
-              In Desktop-App öffnen
-            </a>
+            <div className="desktop-fallback">
+              <a className="link" href={`commanderlink://join/${roomId}`}>
+                In Desktop-App öffnen
+              </a>
+              <p className="desktop-fallback-hint">
+                App noch nicht installiert?{" "}
+                <a className="link" href={WINDOWS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+                  Windows-App herunterladen
+                </a>
+              </p>
+            </div>
           )}
         </section>
       </main>

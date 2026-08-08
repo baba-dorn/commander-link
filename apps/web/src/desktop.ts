@@ -23,3 +23,12 @@ export function getBridge(): CommanderLinkBridge | null {
 export function isDesktop(): boolean {
   return Boolean(window.commanderLink?.isDesktop);
 }
+
+// Stable "latest Windows installer" URL, routed through the always-current
+// GitHub latest-release page so it survives future version bumps.
+export const WINDOWS_DOWNLOAD_URL =
+  "https://github.com/baba-dorn/commander-link/releases/latest";
+
+export function showWindowsDownload(): boolean {
+  return !isDesktop();
+}
