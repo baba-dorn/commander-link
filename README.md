@@ -156,13 +156,13 @@ Users install Commander Link for Windows from the **latest release**:
 ### Current web URL behaviour
 
 The desktop shell always loads the hosted production web app
-(`https://commander-link.joachim-happel.workers.dev`) because packaging runs with `NODE_ENV`
+(`https://commander-link.joinoops.win`) because packaging runs with `NODE_ENV`
 already set. During `pnpm dev` (or `pnpm dev:desktop`) it loads the local Vite dev server at
 `http://localhost:5173`. Override for testing:
 
 ```powershell
 # dev shell pointed at the deployed web app
-$env:COMMANDER_LINK_WEB_URL="https://commander-link.joachim-happel.workers.dev"
+$env:COMMANDER_LINK_WEB_URL="https://commander-link.joinoops.win"
 pnpm dev:desktop
 ```
 

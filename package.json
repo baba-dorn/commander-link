@@ -8,7 +8,7 @@
     "dev:web": "pnpm --filter @commander-link/web dev",
     "dev:worker": "pnpm --filter @commander-link/worker dev",
     "dev:desktop": "pnpm --filter @commander-link/desktop dev",
-    "dev:desktop:remote": "cross-env COMMANDER_LINK_WEB_URL=https://commander-link.joachim-happel.workers.dev pnpm --filter @commander-link/desktop dev",
+    "dev:desktop:remote": "cross-env COMMANDER_LINK_WEB_URL=https://commander-link.joinoops.win pnpm --filter @commander-link/desktop dev",
     "dist:desktop:win": "pnpm --filter @commander-link/desktop dist:win",
     "dist:desktop:dir": "pnpm --filter @commander-link/desktop dist:dir",
     "build": "pnpm -r build",
