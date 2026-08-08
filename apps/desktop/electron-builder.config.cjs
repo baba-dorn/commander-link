@@ -16,6 +16,12 @@ const config = {
     output: "release",
     buildResources: "assets",
   },
+  extraResources: [
+    {
+      from: "assets/default.png",
+      to: "assets/default.png",
+    },
+  ],
   files: [
     "dist/**",
     "package.json",
