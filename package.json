@@ -4,14 +4,24 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.15.0",
   "scripts": {
+    "dev": "cross-env NODE_ENV=not-development next dev",
     "dev:web": "pnpm --filter @commander-link/web dev",
     "dev:worker": "pnpm --filter @commander-link/worker dev",
     "dev:desktop": "pnpm --filter @commander-link/desktop dev",
+    "dev:desktop:remote": "cross-env COMMANDER_LINK_WEB_URL=https://commander-link.joachim-happel.workers.dev pnpm --filter @commander-link/desktop dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test"
   },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  },
   "pnpm": {
-    "onlyBuiltDependencies": ["electron", "esbuild", "uiohook-napi", "workerd"]
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "uiohook-napi",
+      "workerd"
+    ]
   }
 }

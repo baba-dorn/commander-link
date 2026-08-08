@@ -2,7 +2,13 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { uIOhook, UiohookKey } from "uiohook-napi";
 
-const WEB_URL = process.env.COMMANDER_LINK_WEB_URL ?? "http://localhost:5173";
+const DEV_WEB_URL = "http://localhost:5173";
+const PROD_WEB_URL = "https://commander-link.joachim-happel.workers.dev";
+
+const WEB_URL =
+  process.env.COMMANDER_LINK_WEB_URL ??
+  (process.env.NODE_ENV !== "development" ? PROD_WEB_URL : DEV_WEB_URL);
+
 const ROOM_ID = /^[A-Za-z0-9_-]{20,128}$/;
 // Default global PTT key. Configurable later; F8 keeps clear of common game binds.
 const PTT_KEYCODE = UiohookKey.F8;
