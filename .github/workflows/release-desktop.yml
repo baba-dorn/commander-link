@@ -41,6 +41,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Restore gitignored Discord guild config from the committed example so a
+      # fresh checkout can typecheck/test/build the Discord worker.
+      - name: Restore Discord guild configuration
+        shell: bash
+        run: cp apps/discord/config/guilds.example.json apps/discord/config/guilds.json
+
       - name: Typecheck
         run: pnpm typecheck
 

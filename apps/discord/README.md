@@ -63,8 +63,21 @@ behavior are unchanged.
 
 ### Guild configuration (`apps/discord/config/guilds.json`)
 
+The real `apps/discord/config/guilds.json` is **gitignored** deploy-time config
+(per-guild authorization). A committed template lives at
+`apps/discord/config/guilds.example.json`; copy it to a real file before running
+the Discord worker or its tests:
+
+```powershell
+copy apps\discord\config\guilds.example.json apps\discord\config\guilds.json
+```
+
+CI restores `guilds.json` from `guilds.example.json` automatically before
+typecheck/test/build, so a fresh checkout verifies against the canonical example
+config. For local, edit the copied `guilds.json` with your real guild/role ids.
+
 Which Discord guilds may use `/commander`, and the **Commander role id** each
-requires, is configured in versioned JSON:
+requires, is configured in this versioned JSON:
 
 ```json
 {

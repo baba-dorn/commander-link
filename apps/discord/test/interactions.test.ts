@@ -12,13 +12,15 @@ import {
 } from "../src/guild-config";
 import { handleInteractions, type Env } from "../src/index";
 
-// Guild A and B come from the bundled apps/discord/config/guilds.json.
+// Guild A and B come from the bundled apps/discord/config/guilds.json. The
+// committed canonical test config is apps/discord/config/guilds.example.json,
+// which CI copies to guilds.json before running checks.
 const GUILD_A = "450409169795678229";
 const ROLE_A = "1249351808522915991";
-const GUILD_B = "341897217876951040";
-const ROLE_B = "1535639206439682169";
-const GUILD_DISABLED = "1193184158026039337";
-const ROLE_DISABLED = "444444444444444444";
+const GUILD_B = "333333333333333333";
+const ROLE_B = "444444444444444444";
+const GUILD_DISABLED = "555555555555555555";
+const ROLE_DISABLED = "666666666666666666";
 
 const CONFIG: DiscordConfig = {
   publicKey: "placeholder-hex",

@@ -13,6 +13,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile=false
+      # The real discord guilds.json is deploy-time config that is gitignored. A
+      # fresh checkout needs one to typecheck/test/build the Discord worker, so
+      # restore it from the committed example (the canonical CI config), mirroring
+      # local setup.
+      - name: Restore Discord guild configuration
+        shell: bash
+        run: cp apps/discord/config/guilds.example.json apps/discord/config/guilds.json
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
