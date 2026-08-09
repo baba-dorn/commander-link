@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getGuildConfig, isGuildDisabled } from "./guild-config";
 
 /**
  * Discord HTTP Interactions handling for Commander Link.
@@ -15,17 +16,11 @@ export interface DiscordConfig {
   publicKey: string;
   /** Discord Application ID (safe identifier). */
   applicationId: string;
-  /** Only this guild may create Commander Link rooms. */
-  guildId: string;
-  /** Only members holding this role id may create rooms. */
-  commanderRoleId: string;
 }
 
 const DiscordConfigSchema = z.object({
   publicKey: z.string().min(1),
   applicationId: z.string().min(1),
-  guildId: z.string().min(1),
-  commanderRoleId: z.string().min(1),
 });
 
 /** Parse Worker environment into a validated {@link DiscordConfig}. */
@@ -33,8 +28,6 @@ export function readConfig(env: Record<string, string | undefined>): DiscordConf
   const parsed = DiscordConfigSchema.safeParse({
     publicKey: env.DISCORD_PUBLIC_KEY,
     applicationId: env.DISCORD_APPLICATION_ID,
-    guildId: env.DISCORD_GUILD_ID,
-    commanderRoleId: env.DISCORD_COMMANDER_ROLE_ID,
   });
   if (!parsed.success) {
     throw new Error("missing or invalid Discord configuration");
@@ -125,16 +118,25 @@ export type DiscordResponse =
 
 const EPHEMERAL = 1 << 6;
 
-const WRONG_GUILD_MESSAGE =
-  "Dieser Befehl kann nur auf dem vorgesehenen Discord-Server verwendet werden.";
+const UNKNOWN_GUILD_MESSAGE =
+  "Dieser Discord-Server ist für Commander Link nicht freigeschaltet.";
+const DISABLED_GUILD_MESSAGE =
+  "Commander Link ist auf diesem Discord-Server derzeit deaktiviert.";
 const NO_ROLE_MESSAGE =
-  "Du benötigst die Discord-Rolle „Kommandeur“, um einen Commander-Link-Raum zu erstellen.";
+  "Du benötigst die konfigurierte Kommandeur-Rolle, um einen Commander-Link-Raum zu erstellen.";
 const FAILED_MESSAGE = "Der Commander-Link-Raum konnte gerade nicht erstellt werden.";
+
+function denyMessage(guildId: string | undefined): string {
+  if (isGuildDisabled(guildId)) {
+    return DISABLED_GUILD_MESSAGE;
+  }
+  return UNKNOWN_GUILD_MESSAGE;
+}
 
 /**
  * Route an already signature-verified interaction through the authorization
- * chain. Fail-closed: only a verified, in-guild, guild-member with the
- * Commander role id proceeds to room creation.
+ * chain. Fail-closed: only a verified, configured, enabled guild member with
+ * the per-guild Commander role id proceeds to room creation.
  */
 export function handleInteraction(
   config: DiscordConfig,
@@ -154,15 +156,20 @@ export function handleInteraction(
     };
   }
 
-  if (cmd.guild_id !== config.guildId) {
+  const guild = getGuildConfig(cmd.guild_id);
+  if (!guild) {
+    // Covers: no guild_id, unconfigured guild, and disabled guild.
     return {
       decision: "deny",
-      response: { type: 4, data: { content: WRONG_GUILD_MESSAGE, flags: EPHEMERAL } },
+      response: {
+        type: 4,
+        data: { content: denyMessage(cmd.guild_id), flags: EPHEMERAL },
+      },
     };
   }
 
   const roles = cmd.member?.roles ?? [];
-  if (!Array.isArray(roles) || !roles.includes(config.commanderRoleId)) {
+  if (!Array.isArray(roles) || !roles.includes(guild.commanderRoleId)) {
     return {
       decision: "deny",
       response: { type: 4, data: { content: NO_ROLE_MESSAGE, flags: EPHEMERAL } },

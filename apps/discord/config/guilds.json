@@ -1,0 +1,19 @@
+{
+  "guilds": {
+    "450409169795678229": {
+      "name": "DORN",
+      "commanderRoleId": "1249351808522915991",
+      "enabled": true
+    },
+    "1193184158026039337": {
+      "name": "OOPS",
+      "commanderRoleId": "444444444444444444",
+      "enabled": true
+    },
+    "555555555555555555": {
+      "name": "Disabled Placeholder",
+      "commanderRoleId": "666666666666666666",
+      "enabled": false
+    }
+  }
+}

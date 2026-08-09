@@ -16,9 +16,13 @@ compatibility_date = "2026-08-01"
 # out of the repo and in .dev.vars / secrets so no operational value is ever
 # committed. The registration token (DISCORD_BOT_TOKEN) is development/tooling
 # only and is not required by the runtime worker.
+#
+# Per-guild authorization (which guilds may use /commander and which role id is
+# required on each) is versioned in apps/discord/config/guilds.json. That file is
+# bundled into the Worker, so editing it and running `pnpm deploy:discord` ships
+# the new guild configuration. Discarded: DISCORD_GUILD_ID and
+# DISCORD_COMMANDER_ROLE_ID env vars.
 [vars]
 # COMMANDER_LINK_API_URL = "https://commander-link-api.<account>.workers.dev"
 # DISCORD_PUBLIC_KEY = ""
 # DISCORD_APPLICATION_ID = ""
-# DISCORD_GUILD_ID = ""
-# DISCORD_COMMANDER_ROLE_ID = ""

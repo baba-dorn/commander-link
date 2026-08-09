@@ -11,12 +11,12 @@ ROOM_CREATE_SECRET=replace-me-long-random-secret
 DISCORD_BOT_TOKEN=replace-me
 
 # --- Safe identifiers / configuration (may be Worker vars or secrets) ---
-# Commanders' role id is non-secret but is kept here so no operational value is
-# committed. Obtain ids with Developer Mode enabled, right-click -> Copy ID.
+# Guild IDs and Commander role IDs are NOT secrets. They are configured in:
+# apps/discord/config/guilds.json
+# Editing that file and running `pnpm deploy:discord` ships the new guild
+# configuration. Do NOT place secrets in that JSON file.
 DISCORD_PUBLIC_KEY=replace-me
 DISCORD_APPLICATION_ID=replace-me
-DISCORD_GUILD_ID=replace-me
-DISCORD_COMMANDER_ROLE_ID=replace-me
 
 # Commander Link API (worker) base URL.
 COMMANDER_LINK_API_URL=http://localhost:8788

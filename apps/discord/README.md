@@ -4,7 +4,7 @@ Adds **Discord** as an entry point for creating Commander Link rooms.
 
 A server member holding the configured Commander role runs the `/commander` slash
 command. This Discord Worker verifies the request signature, the guild, and the
-role, then asks the **existing** Commander Link API Worker
+per-guild role, then asks the **existing** Commander Link API Worker
 (`commander-link-api`, `apps/worker`) to create the room. There is exactly **one**
 room-creation implementation — the existing Worker — and this app simply triggers it.
 
@@ -14,14 +14,19 @@ Discord
    ▼
 apps/discord  (commander-link-discord Worker)
    ├─ verify Discord Ed25519 signature
-   ├─ verify guild  == DISCORD_GUILD_ID
-   ├─ verify member has DISCORD_COMMANDER_ROLE_ID
+   ├─ look up guild in config/guilds.json (enabled + commanderRoleId)
+   ├─ verify member has that guild's commanderRoleId
    ▼
 server-to-server POST /v1/rooms
    ▼
 apps/worker  (commander-link-api)
    └─ existing createRoom() → RoomGate → invite URL
 ```
+
+The same Discord Application can operate on **multiple** guilds simultaneously.
+Which guilds are enabled and which Commander role id each requires is versioned
+in `apps/discord/config/guilds.json` (bundled into the Worker), not in
+environment variables.
 
 This app is **not** a Discord bot/Gateway, does not do voice, and does not
 re-implement room lifecycle, Durable Objects, TTL, Metered tokens or invite URL
@@ -60,15 +65,51 @@ Do **not** change join, leave, heartbeat, metadata or VoiceBackend behavior.
 
 ## Configuration
 
+### Guild configuration (`apps/discord/config/guilds.json`)
+
+Which Discord guilds may use `/commander`, and the **Commander role id** each
+requires, is configured in versioned JSON:
+
+```json
+{
+  "guilds": {
+    "450409169795678229": {
+      "name": "Commander Link Test",
+      "commanderRoleId": "1249351808522915991",
+      "enabled": true
+    },
+    "333333333333333333": {
+      "name": "OOPS",
+      "commanderRoleId": "444444444444444444",
+      "enabled": true
+    }
+  }
+}
+```
+
+| Field | Purpose |
+| --- | --- |
+| `guilds.<id>` | Discord **Guild ID** (Developer Mode → right-click server → Copy Server ID). This is the key used to look up the guild. |
+| `name` | Human-readable label for reports/logs. |
+| `commanderRoleId` | The **role id** (never the name) that may create rooms **on this guild**. |
+| `enabled` | `false` disables `/commander` for the guild without deleting its config. |
+
+Guild IDs and role IDs are **not secrets** and may be committed/versioned. The
+file is bundled into the Worker: edit it, then run `pnpm deploy:discord`.
+
+**Never** put `DISCORD_BOT_TOKEN`, `ROOM_CREATE_SECRET`, or any other secret in
+`guilds.json`.
+
 ### Runtime variables (safe identifiers — may be Worker `[vars]` or secrets)
 
 | Variable | Purpose |
 | --- | --- |
 | `DISCORD_PUBLIC_KEY` | Hex Ed25519 public key from the Developer Portal. Used to verify interaction signatures. |
 | `DISCORD_APPLICATION_ID` | Discord Application ID. |
-| `DISCORD_GUILD_ID` | Only this guild may create rooms. |
-| `DISCORD_COMMANDER_ROLE_ID` | Only members with this **role id** may create rooms (id, never the name). |
 | `COMMANDER_LINK_API_URL` | Base URL of the Commander Link API Worker (e.g. `https://commander-link-api.<account>.workers.dev`). |
+
+`DISCORD_GUILD_ID` and `DISCORD_COMMANDER_ROLE_ID` are **no longer used** — per-guild
+authorization now comes from `config/guilds.json`.
 
 ### Secrets (never commit; never returned to clients)
 
@@ -96,9 +137,9 @@ Copy `apps/discord/.dev.vars.example` → `.dev.vars` for `wrangler dev`.
 6. Obtain the **Guild ID**: enable Developer Mode (Settings → Advanced → Developer
    Mode), right-click the server → **Copy Server ID**.
 7. Obtain the **Commander role id**: with Developer Mode enabled, right-click the
-   role (Server Settings → Roles) → **Copy Role ID**. Set this as
-   `DISCORD_COMMANDER_ROLE_ID`. Do not rely on the human-readable name
-   `"Kommandeur"` — authorize by id.
+   role (Server Settings → Roles) → **Copy Role ID**. Do not rely on the human-readable
+   name `"Kommandeur"` — authorize by id. Put both into `config/guilds.json` (see
+   "Adding another Discord server").
 8. Configure the Worker variables/secrets (see below) and deploy.
 9. Register `/commander` as a guild command (see below).
 10. Test with: a Commander-role member, a normal member, a different guild (if
@@ -111,6 +152,80 @@ server administrator can restrict `/commander` to the `Kommandeur` role in
 Server Settings → Integrations → App → `commander` → edit command permissions so
 the command is only visible/usable by that role. This is UX/defense-in-depth only
 and must never be relied on as the sole authorization mechanism.
+
+---
+
+## Adding another Discord server
+
+The same Discord Application can be installed on additional servers. Each server
+gets its own entry in `apps/discord/config/guilds.json` with its own Commander role id.
+
+1. **Install the same Discord Application** on the new server using the same
+   install flow / OAuth app scope (`applications.commands`).
+2. **Enable Discord Developer Mode**: Settings → Advanced → Developer Mode.
+3. **Copy the Guild ID**: right-click the server → Copy Server ID.
+4. **Copy the Commander role id**: with Developer Mode enabled, Server Settings →
+   Roles → right-click the Commander role → Copy Role ID.
+5. **Add both to `apps/discord/config/guilds.json`**:
+
+   ```json
+   "450409169795678229": {
+     "name": "Commander Link Test",
+     "commanderRoleId": "1249351808522915991",
+     "enabled": true
+   }
+   ```
+
+6. Set `"enabled": true`.
+7. **Deploy** the new authorization configuration:
+
+   ```powershell
+   pnpm deploy:discord
+   ```
+
+   `pnpm deploy:discord` bundles `guilds.json` into the Worker, so the new guild
+   is immediately authorized. It does **not** install the `/commander` command.
+8. **Register the guild command** so `/commander` appears on the new server:
+
+   ```powershell
+   pnpm register:discord:command
+   ```
+
+9. **Test** `/commander` with:
+   - a member holding the Commander role → should create a room;
+   - a normal member → should be denied.
+
+> **Tip:** `pnpm deploy:discord` updates the Worker *authorization* configuration.
+> A brand-new guild additionally needs the `/commander` command **installed** via
+> `pnpm register:discord:command`. Worker deployment and command registration are
+> two separate steps.
+
+### Disabling a server
+
+To temporarily disable a server without deleting its configuration, set
+`"enabled": false`:
+
+```json
+{
+  "guilds": {
+    "450409169795678229": {
+      "name": "Commander Link Test",
+      "commanderRoleId": "1249351808522915991",
+      "enabled": false
+    }
+  }
+}
+```
+
+Then run:
+
+```powershell
+pnpm deploy:discord
+```
+
+The guild is then denied (returns "Commander Link ist auf diesem Discord-Server
+derzeit deaktiviert.") with no room creation. To re-enable, flip `enabled` back to
+`true` and deploy again.
 
 ---
 
@@ -143,8 +258,10 @@ wrangler secret put DISCORD_BOT_TOKEN        # optional; only for the register s
 cd ../..
 
 # Set non-secret vars in apps/discord/wrangler.toml [vars] or as secrets:
-#   DISCORD_PUBLIC_KEY, DISCORD_APPLICATION_ID, DISCORD_GUILD_ID,
-#   DISCORD_COMMANDER_ROLE_ID, COMMANDER_LINK_API_URL
+#   DISCORD_PUBLIC_KEY, DISCORD_APPLICATION_ID, COMMANDER_LINK_API_URL
+
+# Per-guild authorization comes from apps/discord/config/guilds.json (bundled).
+# DISCORD_GUILD_ID / DISCORD_COMMANDER_ROLE_ID are no longer used.
 
 # Deploy
 pnpm deploy:discord    # = wrangler deploy (worker: commander-link-discord)
@@ -160,8 +277,8 @@ way that is committed. Keep secrets in `wrangler secret` + local `.dev.vars`.
 
 ## Registering `/commander`
 
-Guild commands update quickly and only appear on the target server, which is
-right for the current single-guild target.
+Registers the `/commander` guild command for **every enabled guild** in
+`apps/discord/config/guilds.json`.
 
 ```powershell
 # from repo root
@@ -171,9 +288,10 @@ pnpm register:command
 ```
 
 Requires these environment variables: `DISCORD_APPLICATION_ID`,
-`DISCORD_GUILD_ID`, `DISCORD_BOT_TOKEN`. Provide them on the command line or via
-`.dev.vars` (the script reads `process.env`; for a shell prompt, export them or
-use dotenv-style tooling — the token is a secret and must never be committed).
+`DISCORD_BOT_TOKEN`. Provide them on the command line or via `.dev.vars` (the
+script reads `process.env`; for a shell prompt, export them or use dotenv-style
+tooling — the token is a secret and must never be committed). `DISCORD_GUILD_ID` is
+no longer required; enabled guilds are read from `guilds.json`.
 
 ---
 

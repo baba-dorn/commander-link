@@ -5,16 +5,24 @@ import {
   verifyDiscordRequest,
   type DiscordConfig,
 } from "../src/discord";
+import {
+  validateGuildConfig,
+  getGuildConfig,
+  isGuildDisabled,
+} from "../src/guild-config";
 import { handleInteractions, type Env } from "../src/index";
 
-const GUILD_ID = "111111111111111111";
-const ROLE_ID = "222222222222222222";
+// Guild A and B come from the bundled apps/discord/config/guilds.json.
+const GUILD_A = "450409169795678229";
+const ROLE_A = "1249351808522915991";
+const GUILD_B = "333333333333333333";
+const ROLE_B = "444444444444444444";
+const GUILD_DISABLED = "555555555555555555";
+const ROLE_DISABLED = "666666666666666666";
 
 const CONFIG: DiscordConfig = {
   publicKey: "placeholder-hex",
   applicationId: "999999999999999999",
-  guildId: GUILD_ID,
-  commanderRoleId: ROLE_ID,
 };
 
 let secretKey: CryptoKey;
@@ -51,8 +59,8 @@ function commanderInteraction(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     type: 2,
     data: { name: "commander" },
-    guild_id: GUILD_ID,
-    member: { roles: [ROLE_ID] },
+    guild_id: GUILD_A,
+    member: { roles: [ROLE_A] },
     ...overrides,
   });
 }
@@ -61,8 +69,6 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     DISCORD_PUBLIC_KEY: publicKeyHex,
     DISCORD_APPLICATION_ID: "999999999999999999",
-    DISCORD_GUILD_ID: GUILD_ID,
-    DISCORD_COMMANDER_ROLE_ID: ROLE_ID,
     COMMANDER_LINK_API_URL: "http://api.example",
     ROOM_CREATE_SECRET: "it-is-a-secret",
     ...overrides,
@@ -91,6 +97,42 @@ function mockApiFetch(status = 200, body: unknown = {}) {
   vi.stubGlobal("fetch", spy);
   return spy;
 }
+
+// ---------------------------------------------------------------------------
+// Guild configuration lookup
+// ---------------------------------------------------------------------------
+
+describe("guild-config lookup", () => {
+  it("returns the enabled guild for a configured, enabled guild", () => {
+    expect(getGuildConfig(GUILD_A)?.commanderRoleId).toBe(ROLE_A);
+    expect(getGuildConfig(GUILD_B)?.commanderRoleId).toBe(ROLE_B);
+  });
+
+  it("each guild uses its own role id", () => {
+    expect(getGuildConfig(GUILD_A)?.commanderRoleId).not.toBe(
+      getGuildConfig(GUILD_B)?.commanderRoleId
+    );
+  });
+
+  it("returns null for an unknown guild", () => {
+    expect(getGuildConfig("999999999999999999")).toBeNull();
+  });
+
+  it("returns null for a disabled guild", () => {
+    expect(getGuildConfig(GUILD_DISABLED)).toBeNull();
+  });
+
+  it("returns null for a missing guild id", () => {
+    expect(getGuildConfig(undefined)).toBeNull();
+  });
+
+  it("isGuildDisabled is true only for a configured-and-disabled guild", () => {
+    expect(isGuildDisabled(GUILD_DISABLED)).toBe(true);
+    expect(isGuildDisabled(GUILD_A)).toBe(false);
+    expect(isGuildDisabled("999999999999999999")).toBe(false);
+    expect(isGuildDisabled(undefined)).toBe(false);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Signature / interaction handling
@@ -158,26 +200,53 @@ describe("handleInteractions PING", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Authorization
+// Multi-guild authorization
 // ---------------------------------------------------------------------------
 
-describe("handleInteraction authorization", () => {
-  it("allows the correct guild + Commander role", () => {
+describe("handleInteraction multi-guild authorization", () => {
+  it("allows Guild A with Role A", () => {
     const interaction = JSON.parse(commanderInteraction()) as unknown;
     const { decision } = handleInteraction(CONFIG, interaction);
     expect(decision).toBe("create");
   });
 
-  it("denies the correct guild without the Commander role", () => {
-    const interaction = JSON.parse(commanderInteraction({ member: { roles: ["some-other"] } })) as unknown;
+  it("denies Guild A with the wrong role (Role B)", () => {
+    const interaction = JSON.parse(
+      commanderInteraction({ guild_id: GUILD_A, member: { roles: [ROLE_B] } })
+    ) as unknown;
     const { decision } = handleInteraction(CONFIG, interaction);
     expect(decision).toBe("deny");
   });
 
-  it("denies the wrong guild", () => {
+  it("allows Guild B with Role B", () => {
+    const interaction = JSON.parse(
+      commanderInteraction({ guild_id: GUILD_B, member: { roles: [ROLE_B] } })
+    ) as unknown;
+    const { decision } = handleInteraction(CONFIG, interaction);
+    expect(decision).toBe("create");
+  });
+
+  it("denies Guild B with the wrong role (Role A)", () => {
+    const interaction = JSON.parse(
+      commanderInteraction({ guild_id: GUILD_B, member: { roles: [ROLE_A] } })
+    ) as unknown;
+    const { decision } = handleInteraction(CONFIG, interaction);
+    expect(decision).toBe("deny");
+  });
+
+  it("denies an unknown guild", () => {
     const interaction = JSON.parse(commanderInteraction({ guild_id: "99988112233" })) as unknown;
     const { decision } = handleInteraction(CONFIG, interaction);
     expect(decision).toBe("deny");
+  });
+
+  it("denies a disabled guild", () => {
+    const interaction = JSON.parse(
+      commanderInteraction({ guild_id: GUILD_DISABLED, member: { roles: [ROLE_DISABLED] } })
+    ) as unknown;
+    const { decision, response } = handleInteraction(CONFIG, interaction);
+    expect(decision).toBe("deny");
+    expect((response as { data: { content: string } }).data.content).toContain("deaktiviert");
   });
 
   it("denies a DM / no guild context", () => {
@@ -187,6 +256,29 @@ describe("handleInteraction authorization", () => {
     const { decision } = handleInteraction(CONFIG, interaction);
     expect(decision).toBe("deny");
   });
+
+  it("denies missing member context", () => {
+    const interaction = JSON.parse(
+      commanderInteraction({ member: undefined }) as string
+    ) as unknown;
+    const { decision } = handleInteraction(CONFIG, interaction);
+    expect(decision).toBe("deny");
+  });
+
+  it("does not leak role or guild ids in deny messages", () => {
+    const interaction = JSON.parse(commanderInteraction({ guild_id: "99988112233" })) as unknown;
+    const { response } = handleInteraction(CONFIG, interaction);
+    const content = (response as { data: { content: string } }).data.content;
+    expect(content).not.toContain("99988112233");
+    const disabled = JSON.parse(
+      commanderInteraction({ guild_id: GUILD_DISABLED, member: { roles: [ROLE_DISABLED] } })
+    ) as unknown;
+    const disabledResponse = handleInteraction(CONFIG, disabled).response as {
+      data: { content: string };
+    };
+    expect(disabledResponse.data.content).not.toContain(GUILD_DISABLED);
+    expect(disabledResponse.data.content).not.toContain(ROLE_DISABLED);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -194,7 +286,7 @@ describe("handleInteraction authorization", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleInteractions room creation", () => {
-  it("creates exactly one Commander Link room for an authorized user", async () => {
+  it("creates exactly one Commander Link room for an authorized Guild A user", async () => {
     const api = mockApiFetch(201, {
       roomId: "bb63eaf988d4415e8f23413c4eeb5660",
       expiresAt: "2026-08-08T20:00:00.000Z",
@@ -212,7 +304,22 @@ describe("handleInteractions room creation", () => {
     expect(init.headers.Authorization).toBe("Bearer it-is-a-secret");
   });
 
-  it("makes zero room-create requests for an unauthorized user", async () => {
+  it("creates exactly one Commander Link room for an authorized Guild B user", async () => {
+    const api = mockApiFetch(201, {
+      roomId: "bb63eaf988d4415e8f23413c4eeb5660",
+      expiresAt: "2026-08-08T20:00:00.000Z",
+      inviteUrl: "http://api.example/r/bb63eaf988d4415e8f23413c4eeb5660",
+    });
+
+    const env = makeEnv();
+    const raw = commanderInteraction({ guild_id: GUILD_B, member: { roles: [ROLE_B] } });
+    const { status } = await signedPost(raw, env);
+
+    expect(status).toBe(200);
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes zero room-create requests for a wrong-role user", async () => {
     const api = mockApiFetch(201, {
       roomId: "bb63eaf988d4415e8f23413c4eeb5660",
       expiresAt: "2026-08-08T20:00:00.000Z",
@@ -225,6 +332,28 @@ describe("handleInteractions room creation", () => {
 
     expect(status).toBe(200);
     expect((body as { data: { content: string } }).data.content).toContain("Kommandeur");
+    expect(api).toHaveBeenCalledTimes(0);
+  });
+
+  it("makes zero room-create requests for an unknown guild", async () => {
+    const api = mockApiFetch(201, {});
+    const env = makeEnv();
+    const raw = commanderInteraction({ guild_id: "99988112233" });
+    const { status, body } = await signedPost(raw, env);
+
+    expect(status).toBe(200);
+    expect((body as { data: { content: string } }).data.content).toContain("nicht freigeschaltet");
+    expect(api).toHaveBeenCalledTimes(0);
+  });
+
+  it("makes zero room-create requests for a disabled guild", async () => {
+    const api = mockApiFetch(201, {});
+    const env = makeEnv();
+    const raw = commanderInteraction({ guild_id: GUILD_DISABLED, member: { roles: [ROLE_DISABLED] } });
+    const { status, body } = await signedPost(raw, env);
+
+    expect(status).toBe(200);
+    expect((body as { data: { content: string } }).data.content).toContain("deaktiviert");
     expect(api).toHaveBeenCalledTimes(0);
   });
 
@@ -250,6 +379,48 @@ describe("handleInteractions room creation", () => {
     expect((body as { data: { content: string } }).data.content).toContain(
       "konnte gerade nicht erstellt"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Config validation
+// ---------------------------------------------------------------------------
+
+describe("validateGuildConfig", () => {
+  it("accepts a valid multi-guild config", () => {
+    const config = validateGuildConfig({
+      guilds: { [GUILD_A]: { name: "A", commanderRoleId: ROLE_A, enabled: true } },
+    });
+    expect(config.guilds[GUILD_A].commanderRoleId).toBe(ROLE_A);
+  });
+
+  it("rejects a malformed config (empty role)", () => {
+    expect(() =>
+      validateGuildConfig({
+        guilds: { [GUILD_A]: { name: "A", commanderRoleId: "", enabled: true } },
+      })
+    ).toThrow(/guild configuration/i);
+  });
+
+  it("rejects a malformed config (enabled not boolean)", () => {
+    expect(() =>
+      validateGuildConfig({
+        guilds: { [GUILD_A]: { name: "A", commanderRoleId: ROLE_A, enabled: "yes" } },
+      })
+    ).toThrow(/guild configuration/i);
+  });
+
+  it("rejects a config with a missing name", () => {
+    expect(() =>
+      validateGuildConfig({
+        // @ts-expect-error intentionally missing name
+        guilds: { [GUILD_A]: { commanderRoleId: ROLE_A, enabled: true } },
+      })
+    ).toThrow(/guild configuration/i);
+  });
+
+  it("rejects the wrong shape entirely", () => {
+    expect(() => validateGuildConfig({ nope: true })).toThrow(/guild configuration/i);
   });
 });
 

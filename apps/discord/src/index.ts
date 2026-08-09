@@ -4,8 +4,6 @@ import { createCommanderRoom, CommanderLinkError } from "./commander-link";
 export interface Env {
   DISCORD_PUBLIC_KEY: string;
   DISCORD_APPLICATION_ID: string;
-  DISCORD_GUILD_ID: string;
-  DISCORD_COMMANDER_ROLE_ID: string;
   COMMANDER_LINK_API_URL: string;
   ROOM_CREATE_SECRET: string;
 }
