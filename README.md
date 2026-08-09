@@ -65,15 +65,22 @@ Every Commander Link room maps deterministically to a Realtime channel:
 
 ## Primary user journey
 
-1. A commander creates a room.
-2. The service returns an invite like `https://voice.example.org/r/<room-id>`.
-3. Other commanders open the same link in browser, or choose **Open in desktop app**.
+1. An authorized commander runs `/commander` in a configured Discord guild; Discord
+   authorizes (guild + Commander role) and Commander Link initializes the room.
+2. Discord publishes a browser invite like `https://commander-link.joinoops.win/r/<room-id>`
+   and an Electron deep link `commanderlink://join/<room-id>` for the same room.
+3. Other commanders open the same HTTPS link in browser, or the deep link to open
+   the desktop app.
 4. Electron receives a deep link such as `commanderlink://join/<room-id>`.
 5. Each client asks the Worker for a scoped Realtime JWT.
 6. `MeteredPeer` joins the room's channel, connects peers P2P and auto-injects TURN.
 7. Everyone starts muted.
 8. Hold F8 (desktop) or hold the red button (browser) to transmit.
 9. Release means mute immediately.
+
+Rooms are **only** created through Discord; the public website is a join/voice
+client and offers no "create room" flow. Invited participants join an existing
+room with no Discord login or creator credentials.
 
 ## Status
 
@@ -108,7 +115,9 @@ METERED_REALTIME_KEY_ID=sk_id_...
 METERED_REALTIME_SECRET=sk_secret_...
 ```
 
-Open `http://localhost:5173`, create a room, then open the invite in a second window to talk.
+Open `http://localhost:5173`, paste an invite/room id to join. To create a room
+for local testing, POST `POST /v1/rooms` to the local Worker with the configured
+`ROOM_CREATE_SECRET` (as the Discord worker would), or use `pnpm dev:discord`.
 
 ## Configuration
 
@@ -121,6 +130,7 @@ Open `http://localhost:5173`, create a room, then open the invite in a second wi
 | `ROOM_TTL_SECONDS` | Worker `[vars]` | Room lifetime (default 21600 = 6h). |
 | `TOKEN_TTL_SECONDS` | Worker `[vars]` | Minted Realtime JWT lifetime (default 3600 = 1h). |
 | `MAX_ROOM_PEERS` | Worker `[vars]` | Hard admission cap (default 4). |
+| `ROOM_CREATE_SECRET` | Worker **secret** | Shared server-to-server secret authorizing room creation. Sent only by the Discord worker; enforced on `POST /v1/rooms`. Never exposed to clients. |
 
 ### Discord guild configuration
 
@@ -148,8 +158,10 @@ Discord server" for the full workflow and disabling a server (`"enabled": false`
 ## Deployment
 
 - **Worker/API:** `cd apps/worker && wrangler deploy`. Set
-  `METERED_REALTIME_KEY_ID` and `METERED_REALTIME_SECRET` via `wrangler secret
-  put`, and `APP_ORIGIN` in `wrangler.toml`.
+  `METERED_REALTIME_KEY_ID`, `METERED_REALTIME_SECRET` and `ROOM_CREATE_SECRET` via
+  `wrangler secret put`, and `APP_ORIGIN` in `wrangler.toml`. `ROOM_CREATE_SECRET`
+  must match the value configured on the Discord worker so the Discord-authorized
+  room-creation flow works.
 - **Web:** `pnpm --filter @commander-link/web build` → deploy `apps/web/dist` to any static host.
   A SPA fallback (`/* → /index.html`) is required so `/r/<room-id>` resolves; a Cloudflare Pages
   `_redirects` file is included.

@@ -96,6 +96,18 @@ export function channelForRoom(roomId: RoomId): string {
   return `${REALTIME_CHANNEL_PREFIX}/${roomId}`;
 }
 
+/**
+ * The desktop custom-protocol scheme used for the installed Electron app. A
+ * deep link always resolves to the same Commander Link room as its HTTPS
+ * invite (`<origin>/r/<roomId>`); only the launch method differs.
+ */
+export const DEEP_LINK_PROTOCOL = "commanderlink";
+
+/** Build the Electron deep link for a room, e.g. `commanderlink://join/<roomId>`. */
+export function deepLinkForRoom(roomId: RoomId): string {
+  return `${DEEP_LINK_PROTOCOL}://join/${roomId}`;
+}
+
 export const LeaveRoomRequestSchema = z.object({
   admissionId: z.string().uuid(),
 });

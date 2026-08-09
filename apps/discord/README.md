@@ -8,6 +8,10 @@ per-guild role, then asks the **existing** Commander Link API Worker
 (`commander-link-api`, `apps/worker`) to create the room. There is exactly **one**
 room-creation implementation — the existing Worker — and this app simply triggers it.
 
+The resulting Discord message publishes **two** links to the same room: an HTTPS
+browser invite and a `commanderlink://` deep link that opens the installed
+Electron app.
+
 ```text
 Discord
    │  /commander
@@ -17,10 +21,12 @@ apps/discord  (commander-link-discord Worker)
    ├─ look up guild in config/guilds.json (enabled + commanderRoleId)
    ├─ verify member has that guild's commanderRoleId
    ▼
-server-to-server POST /v1/rooms
+server-to-server POST /v1/rooms   (Authorization: Bearer ROOM_CREATE_SECRET)
    ▼
 apps/worker  (commander-link-api)
-   └─ existing createRoom() → RoomGate → invite URL
+   └─ authorized createRoom() → RoomGate → invite URL
+   ▼
+Discord publishes  https://…/r/<id>   +   commanderlink://join/<id>
 ```
 
 The same Discord Application can operate on **multiple** guilds simultaneously.
@@ -34,32 +40,22 @@ generation. It is solely *authorization + room creation trigger*.
 
 ---
 
-## Transitional rollout & planned lockdown (important)
+## Discard is the only room-creation path (important)
 
-Currently **two** paths can create rooms; both call the same `createRoom()`:
+Room creation is **Discord-authorized and Discord-only**. The public web app no
+longer offers a "create room" flow, and the API worker rejects anonymous create
+requests (`401`). There is exactly one room-creation implementation — the Worker
+endpoint `POST /v1/rooms` — and the Discord worker is its only authorized caller,
+authenticating with the shared `ROOM_CREATE_SECRET` (`Authorization: Bearer
+<secret>`, enforced by the Worker).
 
-| Phase | App (browser/desktop) room creation | Discord `/commander` room creation |
-| --- | --- | --- |
-| **1 (this task)** | allowed (unchanged) | allowed |
-| **2 (later)** | disabled | authorized only |
+Joining an existing room is unaffected: invited participants open the browser
+invite or the `commanderlink://` deep link and join without any Discord
+credentials or creator privileges.
 
-For Phase 1 the existing `POST /v1/rooms` endpoint is intentionally **not**
-protected, so current browser/Electron "Create room" keeps working while the
-Discord path is tested in production.
-
-The Discord worker already authenticates permanently via
-`Authorization: Bearer <ROOM_CREATE_SECRET>` (see `src/commander-link.ts`). To
-later make Discord the exclusive path, apply only these minimal changes:
-
-1. In `apps/worker/src/index.ts`, in `createRoom()` (or the `POST /v1/rooms`
-   route), require `Authorization: Bearer ${env.ROOM_CREATE_SECRET}` and return
-   `401`/`403` otherwise. Use a constant-time compare.
-2. Add `ROOM_CREATE_SECRET` to `apps/worker` as a **Wrangler secret** (and to
-   `apps/worker/.dev.vars` for local dev).
-3. The web app's `createRoom()` (`apps/web/src/api.ts`) and its "Raum erstellen"
-   UI can then either be removed or pointed at a Discord-driven flow.
-
-Do **not** change join, leave, heartbeat, metadata or VoiceBackend behavior.
+For this lockdown the Worker requires `ROOM_CREATE_SECRET` on `POST /v1/rooms`
+and returns `401` otherwise. Join, leave, heartbeat, metadata and VoiceBackend
+behavior are unchanged.
 
 ---
 
@@ -115,7 +111,7 @@ authorization now comes from `config/guilds.json`.
 
 | Variable | Purpose |
 | --- | --- |
-| `ROOM_CREATE_SECRET` | Server-to-server secret for `POST /v1/rooms`. Sent by this worker; enforced by the API worker in Phase 2. |
+| `ROOM_CREATE_SECRET` | Server-to-server secret for `POST /v1/rooms`. Sent by this worker as `Bearer <secret>` and **enforced** by the API worker: requests without it are rejected. |
 | `DISCORD_BOT_TOKEN` | **Tooling only** — used solely by `scripts/register-command.ts`. Not required by the runtime worker. |
 
 Copy `apps/discord/.dev.vars.example` → `.dev.vars` for `wrangler dev`.

@@ -7,7 +7,7 @@ import {
   type PttState,
 } from "@commander-link/core";
 import "./styles.css";
-import { ApiError, createRoom, joinRoom, leaveRoom, sendHeartbeat } from "./api";
+import { ApiError, joinRoom, leaveRoom, sendHeartbeat } from "./api";
 import {
   createVoiceTransport,
   type ConnectionStatus,
@@ -137,25 +137,8 @@ function Brand() {
 }
 
 function HomeView({ onEnterRoom }: { onEnterRoom: (id: string) => void }) {
-  const [invite, setInvite] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [joinInput, setJoinInput] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
-
-  const onCreate = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const room = await createRoom();
-      setInvite(room.inviteUrl);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Raum konnte nicht erstellt werden.");
-    } finally {
-      setBusy(false);
-    }
-  }, []);
 
   const onJoinExisting = useCallback(() => {
     const id = extractRoomId(joinInput);
@@ -176,75 +159,40 @@ function HomeView({ onEnterRoom }: { onEnterRoom: (id: string) => void }) {
           Ein ruhiger, privater Push-to-Talk-Kanal für bis zu vier Kommandeure – parallel
           zu Discord, das unverändert weiterläuft.
         </p>
+        <p className="panel-sub">Commander-Link-Räume werden über Discord gestartet.</p>
       </div>
 
-      <div className="home-grid">
-        <section className="panel">
-          <h2>Neuen Raum erstellen</h2>
-          <p className="panel-sub">Erzeuge einen temporären Raum und teile die Einladung.</p>
-          <button className="btn btn-primary btn-block" onClick={onCreate} disabled={busy}>
-            {busy ? "Erstelle …" : "Raum erstellen"}
-          </button>
-          {error && <p className="error">{error}</p>}
-
-          {invite && (
-            <div className="invite-box">
-              <span className="field-label">Einladungslink</span>
-              <code className="invite-url">{invite}</code>
-              <div className="row">
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(invite).then(() => {
-                      setCopied(true);
-                      window.setTimeout(() => setCopied(false), 1500);
-                    });
-                  }}
-                >
-                  {copied ? "Kopiert ✓" : "Link kopieren"}
-                </button>
-                <a className="btn btn-primary" href={invite}>
-                  Raum öffnen
-                </a>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <div className="home-divider" aria-hidden="true">
-          <span>oder</span>
-        </div>
-
-        <section className="panel">
-          <h2>Vorhandenem Raum beitreten</h2>
-          <p className="panel-sub">Füge einen Einladungslink, Deep-Link oder Raumcode ein.</p>
-          <label className="field">
-            <span className="field-label">Einladungslink oder Raumcode</span>
-            <input
-              type="text"
-              value={joinInput}
-              placeholder="https://…/r/…  ·  commanderlink://join/…  ·  Room-ID"
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(e) => {
-                setJoinInput(e.target.value);
-                if (joinError) setJoinError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onJoinExisting();
-              }}
-            />
-          </label>
-          <button
-            className="btn btn-secondary btn-block"
-            onClick={onJoinExisting}
-            disabled={!joinInput.trim()}
-          >
-            Beitreten
-          </button>
-          {joinError && <p className="error">{joinError}</p>}
-        </section>
-      </div>
+      <section className="panel panel-centered">
+        <h2>Vorhandenem Raum beitreten</h2>
+        <p className="panel-sub">
+          Füge einen Einladungslink, Deep-Link oder Raumcode aus Discord ein.
+        </p>
+        <label className="field">
+          <span className="field-label">Einladungslink oder Raumcode</span>
+          <input
+            type="text"
+            value={joinInput}
+            placeholder="https://…/r/…  ·  commanderlink://join/…  ·  Room-ID"
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => {
+              setJoinInput(e.target.value);
+              if (joinError) setJoinError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onJoinExisting();
+            }}
+          />
+        </label>
+        <button
+          className="btn btn-secondary btn-block"
+          onClick={onJoinExisting}
+          disabled={!joinInput.trim()}
+        >
+          Beitreten
+        </button>
+        {joinError && <p className="error">{joinError}</p>}
+      </section>
 
       {showWindowsDownload() && (
         <p className="desktop-download">

@@ -11,6 +11,7 @@ import {
 } from "@commander-link/core";
 import { createVoiceBackend } from "./voice";
 import { VoiceBackendError } from "./voice/backend";
+import { authorizeRoomCreate } from "./room-create";
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomGate>;
@@ -23,6 +24,9 @@ export interface Env {
   ROOM_TTL_SECONDS: string;
   TOKEN_TTL_SECONDS: string;
   MAX_ROOM_PEERS: string;
+  // Shared server-to-server secret used ONLY by the Discord worker to authorize
+  // room initialization. Never exposed to clients. Wrangler secret.
+  ROOM_CREATE_SECRET: string;
 }
 
 interface RoomRecord {
@@ -360,7 +364,12 @@ export default {
     }
 
     if (pathname === "/v1/rooms" && request.method === "POST") {
-      // TODO: attach Cloudflare rate limiting (per-IP create budget) at the edge.
+      // Rooms are initiated ONLY through the authorized Discord integration.
+      // Any public, anonymous create request is rejected. Join/leave/heartbeat
+      // are unaffected — participants still join normally without credentials.
+      if (!authorizeRoomCreate(request.headers.get("Authorization"), env.ROOM_CREATE_SECRET)) {
+        return json(request, env, 401, { error: "unauthorized" });
+      }
       return createRoom(request, env);
     }
 

@@ -59,6 +59,12 @@ The Voice Backend owns: token minting and the transport contract. Metered Realti
 
 ## Room lifecycle (no transport provisioning)
 
+0. **Initiation (Discord only)** — rooms are created **exclusively through the
+   authorized Discord integration**. A `/commander` user must belong to a
+   configured, enabled guild with the per-guild Commander role id. The Discord
+   worker then calls `POST /v1/rooms` with the shared `ROOM_CREATE_SECRET`;
+   arbitrary public clients are rejected with `401`. There is deliberately no
+   public "create room" path and no separate creator account/key.
 1. **Create** — `POST /v1/rooms` stores the Commander Link room in a Durable Object. **No transport provider is provisioned** — Metered Realtime channels exist by name and cost nothing while idle, so rooms nobody enters cost no infrastructure.
 2. **First join** — the first admitted participant's token is minted server-side; the channel name is derived deterministically from the room id.
 3. **Occupied** — participants send heartbeats; missed heartbeats time out a lease (crash / sleep / network loss recovery).
@@ -92,6 +98,13 @@ Client receives { roomId, peerId, realtimeToken, channel, admissionId, expiresAt
 MeteredPeer tokenProvider()  (re-invoked on every reconnect)
 ```
 
+**Creation vs participation.** Creating a room requires Discord authorization
+(configured guild + Commander role); **joining** an existing room does not — any
+invited participant with the HTTPS invite or `commanderlink://` deep link can
+join by display name and microphone, with no Discord login, creator credentials
+or guild membership required. The change removes only public *creation*, never
+normal participation.
+
 The JWT carries:
 - `sub` — the Commander Link peerId (stable across reconnects),
 - `channels` — exactly `commander-link/<room-id>`,
@@ -107,10 +120,17 @@ RoomGate admission is a security/capacity lease, not authoritative media presenc
 
 ## Deep links
 
-Primary invite:
-`https://<app-origin>/r/<room-id>`
+Commander Link rooms are **not** created from the public website. Room creation
+is initiated exclusively through the Discord integration, and Discord provides
+**two** launch paths for the same room — a browser URL and an Electron deep link:
 
-Desktop protocol:
-`commanderlink://join/<room-id>`
+```
+Browser:      https://<app-origin>/r/<room-id>
+Desktop app:  commanderlink://join/<room-id>
+```
 
-The HTTPS route always works as browser fallback.
+Both carry the same room id (and any equivalent invitation/access data) and
+resolve to the same Commander Link room. The HTTPS route always works as browser
+fallback; the `commanderlink://` route opens the installed desktop app. The
+Electron shell validates deep-link room ids and routes them into the same shared
+join flow used by the browser.

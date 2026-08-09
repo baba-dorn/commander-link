@@ -36,7 +36,7 @@ Acceptance: no tested event sequence can leave transmission enabled after a rele
 
 ## P2 — Cloudflare Room Gate
 
-- [x] Implement `POST /v1/rooms` with cryptographically random unguessable room IDs (32 hex chars).
+- [x] Implement `POST /v1/rooms` with cryptographically random unguessable room IDs (32 hex chars). Room creation is authorized only via the shared `ROOM_CREATE_SECRET` (Discord worker); anonymous create requests are rejected (`401`).
 - [x] Implement `GET /v1/rooms/:id` public safe room metadata.
 - [x] Implement `POST /v1/rooms/:id/join`.
 - [x] Implement `POST /v1/rooms/:id/leave` best-effort release (+ `/heartbeat` for lease keep-alive).
@@ -48,7 +48,7 @@ Acceptance: no tested event sequence can leave transmission enabled after a rele
 - [x] Implement `/health` with no secrets.
 - [x] Test fifth-join rejection (admission-logic unit test; DO serializes concurrency).
 
-Acceptance: 4 simultaneous admissions succeed, 5th fails; expired/nonexistent room cannot mint token. ✅
+Acceptance: 4 simultaneous admissions succeed, 5th fails; expired/nonexistent room cannot mint token; anonymous room creation is impossible, Discord-authorized creation works. ✅
 
 ## P3 — Metered Realtime / WebRTC client
 
@@ -64,7 +64,7 @@ Acceptance: 4 local browser instances can join and exchange PTT audio. (manual v
 
 ## P4 — browser UX
 
-- [x] Room creation page with copyable HTTPS invite.
+- [x] Join-only home page (`/`): no public room creation; explains rooms are started through Discord.
 - [x] Join page `/r/:roomId` with display-name-only local identity; no account.
 - [x] Explicit microphone permission step (mic acquired on join).
 - [x] Large red hold-to-talk target suitable for second monitor/touch.
@@ -74,7 +74,7 @@ Acceptance: 4 local browser instances can join and exchange PTT audio. (manual v
 - [x] Button `In Desktop-App öffnen` invoking `commanderlink://join/<roomId>` with graceful fallback.
 - [x] Room code / invite-link entry fallback on the home page (shared `extractRoomId` parsing).
 
-Acceptance: a browser-only user can complete the entire flow without installing software. ✅
+Acceptance: a browser-only user can complete the entire flow without installing software, with no public room creation. ✅
 
 ## P5 — Electron desktop shell
 

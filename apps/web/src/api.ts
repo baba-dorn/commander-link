@@ -1,8 +1,6 @@
 import {
-  CreateRoomResponseSchema,
   JoinRoomResponseSchema,
   RoomMetadataSchema,
-  type CreateRoomResponse,
   type JoinRoomResponse,
   type RoomMetadata,
 } from "@commander-link/core";
@@ -36,10 +34,6 @@ export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
   }
-}
-
-export async function createRoom(): Promise<CreateRoomResponse> {
-  return CreateRoomResponseSchema.parse(await request("/v1/rooms", { method: "POST" }));
 }
 
 export async function getRoomMeta(roomId: string): Promise<RoomMetadata> {

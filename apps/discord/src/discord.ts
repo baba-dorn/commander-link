@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deepLinkForRoom } from "@commander-link/core";
 import { getGuildConfig, isGuildDisabled } from "./guild-config";
 
 /**
@@ -179,12 +180,16 @@ export function handleInteraction(
   return { decision: "create", response: { type: 4, data: { flags: EPHEMERAL } } as DiscordResponse };
 }
 
-/** Build the ephemeral success response describing a fresh invite. */
-export function roomCreatedResponse(inviteUrl: string): DiscordResponse {
+/**
+ * Build the ephemeral success response describing a fresh invite with two
+ * launch paths for the SAME room: a browser HTTPS link and an Electron
+ * `commanderlink://` deep link. Both must be reachable from the invite URL.
+ */
+export function roomCreatedResponse(inviteUrl: string, roomId: string): DiscordResponse {
   return {
     type: 4,
     data: {
-      content: `Commander-Link-Raum erstellt.\n\n${inviteUrl}\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`,
+      content: `Commander-Link-Raum erstellt.\n\n🌐 Im Browser öffnen\n${inviteUrl}\n\n🖥 In der Commander-Link-App öffnen\n${deepLinkForRoom(roomId)}\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`,
       flags: EPHEMERAL,
       components: [
         {

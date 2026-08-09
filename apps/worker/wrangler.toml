@@ -19,6 +19,12 @@ MAX_ROOM_PEERS = "4"
 #   wrangler secret put METERED_REALTIME_KEY_ID     # sk_id_...
 #   wrangler secret put METERED_REALTIME_SECRET     # sk_secret_...
 # For `wrangler dev`, put both in apps/worker/.dev.vars instead.
+#
+# ROOM_CREATE_SECRET is the shared server-to-server secret that authorizes room
+# initialization. It is sent only by the Discord worker (`Bearer <secret>`) and
+# enforced here so arbitrary public clients cannot create rooms. SECRET — never
+# commit. Set it with `wrangler secret put ROOM_CREATE_SECRET` (and in
+# apps/worker/.dev.vars for `wrangler dev`).
 
 [[durable_objects.bindings]]
 name = "ROOMS"

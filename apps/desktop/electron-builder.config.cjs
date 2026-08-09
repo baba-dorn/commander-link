@@ -39,6 +39,15 @@ const config = {
     // final assets/icon.ico is provided. Deliberately non-fatal.
     ...(hasIcon ? { icon: iconPath } : {}),
   },
+  // Linux / Steam Deck: the top-level `protocols` entry above registers
+  // `commanderlink://` in the generated .desktop handler here too. AppImage is
+  // the default, portable target that keeps the prototype buildable without
+  // extra native packaging deps.
+  linux: {
+    target: [{ target: "AppImage", arch: ["x64"] }],
+    category: "AudioVideo",
+    ...(hasIcon ? { icon: iconPath } : {}),
+  },
   nsis: {
     oneClick: false,
     perMachine: false,

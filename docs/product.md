@@ -15,14 +15,19 @@ Raid commanders already use Discord to speak to the full squad. They sometimes n
 
 ## Core journeys
 
-### Create
-A user creates a temporary room and receives one HTTPS invitation. No account required.
+### Start a room (Discord)
+Rooms are started only through the authorized Discord integration. A commander in
+a configured, enabled guild with the Commander role runs `/commander`; Discord
+authorizes, Commander Link initializes the room, and Discord publishes **two**
+links to the same room — an HTTPS browser invite and a `commanderlink://` deep
+link for the installed desktop app. There is no public "create room" on the
+website and no creator account/key.
 
 ### Join in browser
-Open invite, enter display name, grant microphone, join muted, hold red button to speak.
+Open the HTTPS invite, enter display name, grant microphone, join muted, hold red button to speak.
 
 ### Join in desktop app
-Open same invite, choose desktop app, deep link opens/activates Electron, join muted, hold F8 to speak.
+Open the same invite (or the `commanderlink://` deep link), which opens/activates Electron on the same room, join muted, hold F8 to speak.
 
 ## UX rules
 

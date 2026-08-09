@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { uIOhook, UiohookKey } from "uiohook-napi";
+import { deepLinkFromArgv, roomFromDeepLink } from "./deep-link";
 
 const DEV_WEB_URL = "http://localhost:5173";
 const PROD_WEB_URL = "https://commander-link.joinoops.win";
@@ -9,37 +10,12 @@ const WEB_URL =
   process.env.COMMANDER_LINK_WEB_URL ??
   (process.env.NODE_ENV !== "development" ? PROD_WEB_URL : DEV_WEB_URL);
 
-const ROOM_ID = /^[A-Za-z0-9_-]{20,128}$/;
 // Default global PTT key. Configurable later; F8 keeps clear of common game binds.
 const PTT_KEYCODE = UiohookKey.F8;
 
 let mainWindow: BrowserWindow | null = null;
 let pendingRoom: string | null = null;
 let pttHeld = false;
-
-/** Extract a validated room id from a `commanderlink://join/<id>` deep link. */
-function roomFromDeepLink(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "commanderlink:") return null;
-    // commanderlink://join/<id>  -> host "join", pathname "/<id>"
-    const id = parsed.pathname.replace(/^\/+/, "") || parsed.searchParams.get("room") || "";
-    return ROOM_ID.test(id) ? id : null;
-  } catch {
-    return null;
-  }
-}
-
-function deepLinkFromArgv(argv: string[]): string | null {
-  for (const arg of argv) {
-    if (arg.startsWith("commanderlink://")) {
-      const room = roomFromDeepLink(arg);
-      if (room) return room;
-    }
-  }
-  return null;
-}
 
 function routeToRoom(roomId: string): void {
   pendingRoom = roomId;

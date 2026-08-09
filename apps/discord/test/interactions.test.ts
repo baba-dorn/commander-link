@@ -15,10 +15,10 @@ import { handleInteractions, type Env } from "../src/index";
 // Guild A and B come from the bundled apps/discord/config/guilds.json.
 const GUILD_A = "450409169795678229";
 const ROLE_A = "1249351808522915991";
-const GUILD_B = "333333333333333333";
-const ROLE_B = "444444444444444444";
-const GUILD_DISABLED = "555555555555555555";
-const ROLE_DISABLED = "666666666666666666";
+const GUILD_B = "341897217876951040";
+const ROLE_B = "1535639206439682169";
+const GUILD_DISABLED = "1193184158026039337";
+const ROLE_DISABLED = "444444444444444444";
 
 const CONFIG: DiscordConfig = {
   publicKey: "placeholder-hex",
@@ -304,6 +304,26 @@ describe("handleInteractions room creation", () => {
     expect(init.headers.Authorization).toBe("Bearer it-is-a-secret");
   });
 
+  it("publishes a browser URL and an Electron deep link for the same room", async () => {
+    const roomId = "bb63eaf988d4415e8f23413c4eeb566";
+    const inviteUrl = `https://commander-link.joinoops.win/r/${roomId}`;
+    mockApiFetch(201, {
+      roomId,
+      expiresAt: "2026-08-08T20:00:00.000Z",
+      inviteUrl,
+    });
+
+    const env = makeEnv();
+    const { status, body } = await signedPost(commanderInteraction(), env);
+
+    expect(status).toBe(200);
+    const content = (body as { data: { content: string } }).data.content;
+    expect(content).toContain(inviteUrl);
+    expect(content).toContain(`commanderlink://join/${roomId}`);
+    // The room id appears in both links via the extracted room id.
+    expect(content).toContain(roomId);
+  });
+
   it("creates exactly one Commander Link room for an authorized Guild B user", async () => {
     const api = mockApiFetch(201, {
       roomId: "bb63eaf988d4415e8f23413c4eeb5660",
@@ -429,10 +449,16 @@ describe("validateGuildConfig", () => {
 // ---------------------------------------------------------------------------
 
 describe("roomCreatedResponse", () => {
-  it("embeds the invite as content and a URL button", () => {
-    const response = roomCreatedResponse("http://api.example/r/xyz");
+  it("embeds both the browser invite and the Commander Link deep link for the same room", () => {
+    const roomId = "bb63eaf988d4415e8f23413c4eeb566";
+    const inviteUrl = `https://commander-link.joinoops.win/r/${roomId}`;
+    const response = roomCreatedResponse(inviteUrl, roomId);
     const data = response as { data: { content: string; flags: number; components: unknown[] } };
     expect(data.data.content).toContain("Commander-Link-Raum erstellt");
+    expect(data.data.content).toContain("Im Browser öffnen");
+    expect(data.data.content).toContain(inviteUrl);
+    expect(data.data.content).toContain("In der Commander-Link-App öffnen");
+    expect(data.data.content).toContain(`commanderlink://join/${roomId}`);
     expect(data.data.flags).toBe(1 << 6); // ephemeral
     expect(data.data.components).toBeTruthy();
   });

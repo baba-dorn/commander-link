@@ -59,7 +59,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
       commanderLinkApiUrl: env.COMMANDER_LINK_API_URL,
       roomCreateSecret: env.ROOM_CREATE_SECRET,
     });
-    return json(200, roomCreatedResponse(room.inviteUrl));
+    return json(200, roomCreatedResponse(room.inviteUrl, room.roomId));
   } catch (err) {
     // Never ship internal detail or credentials back to Discord.
     if (err instanceof CommanderLinkError) {
