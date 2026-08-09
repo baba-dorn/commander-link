@@ -81,7 +81,14 @@ export default {
       return json(200, { ok: true });
     }
 
-    if (request.method === "POST" && url.pathname === "/interactions") {
+    if (
+      request.method === "POST" &&
+      (url.pathname === "/interactions" || url.pathname === "/")
+    ) {
+      // Discord posts the interaction/PING to exactly the configured endpoint
+      // URL. Accept both the canonical `/interactions` and the bare-domain
+      // root path so Discord can validate the endpoint regardless of how the
+      // Interactions Endpoint URL is entered in the Developer Portal.
       return handleInteractions(request, env);
     }
 

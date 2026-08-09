@@ -41,7 +41,8 @@ function bytesToHex(bytes: Uint8Array): string {
 
 async function sign(raw: string): Promise<{ signature: string; timestamp: string }> {
   const timestamp = "1700000000";
-  const message = new TextEncoder().encode(`${timestamp}\n${raw}`);
+  // Discord signs `timestamp + rawBody` WITHOUT a separator newline.
+  const message = new TextEncoder().encode(`${timestamp}${raw}`);
   const sig = new Uint8Array(await crypto.subtle.sign("Ed25519", secretKey, message));
   return { signature: bytesToHex(sig), timestamp };
 }

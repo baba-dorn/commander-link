@@ -70,7 +70,7 @@ export async function verifyDiscordRequest(
     false,
     ["verify"]
   );
-  const messageBytes = new TextEncoder().encode(`${timestamp}\n${rawBody}`);
+  const messageBytes = new TextEncoder().encode(`${timestamp}${rawBody}`);
   const message = new Uint8Array(new ArrayBuffer(messageBytes.byteLength));
   message.set(messageBytes);
   return crypto.subtle.verify("Ed25519", key, signatureBytes, message);
