@@ -55,7 +55,9 @@ Every Commander Link room maps deterministically to a Realtime channel:
 - `apps/worker` — Cloudflare Worker + one SQLite-backed Durable Object per room.
 - `apps/discord` — Cloudflare Worker handling Discord HTTP Interactions; authorizes the
   `/commander` slash command (signature + guild + Commander role) and triggers the existing
-  room-creation API. Authorization entry point only, not a Gateway/voice bot.
+  room-creation API. Authorization entry point only, not a Gateway/voice bot. Which guilds may use
+  `/commander` (and each guild's Commander role id) is configured versioned in
+  `apps/discord/config/guilds.json`, bundled into the Worker.
 - `packages/core` — shared types, room/API contracts and PTT state machine.
 - `docs/` — product, architecture, security, networking and acceptance criteria.
 - `AGENTS.md` — binding Codex implementation instructions.
@@ -120,6 +122,29 @@ Open `http://localhost:5173`, create a room, then open the invite in a second wi
 | `TOKEN_TTL_SECONDS` | Worker `[vars]` | Minted Realtime JWT lifetime (default 3600 = 1h). |
 | `MAX_ROOM_PEERS` | Worker `[vars]` | Hard admission cap (default 4). |
 
+### Discord guild configuration
+
+Which Discord servers may use `/commander`, and the Commander role id each requires,
+is **not** an environment variable. It lives in `apps/discord/config/guilds.json`
+(bundled into the Discord Worker):
+
+```json
+{
+  "guilds": {
+    "450409169795678229": {
+      "name": "Commander Link Test",
+      "commanderRoleId": "1249351808522915991",
+      "enabled": true
+    }
+  }
+}
+```
+
+Guild IDs and role IDs are not secrets and may be committed. Edit the file, deploy
+the Discord worker (`pnpm deploy:discord`), then register the command for the new
+guild (`pnpm register:discord:command`). See `apps/discord/README.md` → "Adding another
+Discord server" for the full workflow and disabling a server (`"enabled": false`).
+
 ## Deployment
 
 - **Worker/API:** `cd apps/worker && wrangler deploy`. Set
@@ -130,6 +155,10 @@ Open `http://localhost:5173`, create a room, then open the invite in a second wi
   `_redirects` file is included.
 - **Desktop:** `pnpm --filter @commander-link/desktop build`, then package with your Electron
   packager. The app registers the `commanderlink://` protocol on Windows/Linux.
+- **Discord:** `pnpm deploy:discord` (worker `commander-link-discord`) bundles the current
+  `apps/discord/config/guilds.json` authorization config. To enable a **new** guild, add it there,
+  deploy, then also run `pnpm register:discord:command` to install `/commander` on it. Set
+  `ROOM_CREATE_SECRET` (and `DISCORD_BOT_TOKEN` for the register script) as Wrangler secrets.
 
 ## Deep links & the desktop app
 
