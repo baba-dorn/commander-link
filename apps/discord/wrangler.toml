@@ -1,6 +1,10 @@
 name = "commander-link-discord"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
+routes = [
+  { pattern = "commander-link-discord.joinoops.win", custom_domain = true }
+]
+workers_dev = false
 
 # Commander Link Discord interaction worker.
 #
