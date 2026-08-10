@@ -166,6 +166,8 @@ export function handleInteraction(
   decision: "pong" | "create" | "share" | "deny" | "unknown";
   response: DiscordResponse;
   roomId?: string;
+  guildId?: string;
+  guildName?: string;
   channelId?: string;
   shareButtonEnabled?: boolean;
 } {
@@ -183,7 +185,7 @@ export function handleInteraction(
     if (!roomId || !guild || !Array.isArray(roles) || !roles.includes(guild.commanderRoleId)) {
       return { decision: "deny", response: { type: 4, data: { content: "Diese Teilen-Aktion ist nicht gültig oder nicht erlaubt.", flags: EPHEMERAL } } };
     }
-    return { decision: "share", roomId, channelId: guild.commanderChannelId, shareButtonEnabled: Boolean(guild.commanderChannelId), response: { type: 4, data: { flags: EPHEMERAL } } };
+    return { decision: "share", roomId, guildId: component.guild_id, guildName: guild.name, channelId: guild.commanderChannelId, shareButtonEnabled: Boolean(guild.commanderChannelId), response: { type: 4, data: { flags: EPHEMERAL } } };
   }
   if (!cmd || cmd.type !== APPLICATION_COMMAND_TYPE || !cmd.data || cmd.data.name !== "commander") {
     // Unknown / unsupported interaction: fail safely and predictably.

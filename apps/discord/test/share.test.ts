@@ -6,6 +6,7 @@ const missingRoomId = "cc74fba999e5526f9a34524d5ffc6771";
 const env = {
   commanderLinkApiUrl: "https://api.example",
   commanderLinkWebUrl: "https://commander-link.example",
+  guildId: "987654321098765432",
   commanderChannelId: "123456789012345678",
   discordBotToken: "bot-secret",
 };
@@ -25,7 +26,10 @@ describe("shareRoom", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe(`https://discord.com/api/v10/channels/${env.commanderChannelId}/messages`);
-    expect(init.headers).toMatchObject({ Authorization: "Bot bot-secret" });
+    expect(init.headers).toMatchObject({
+      Authorization: "Bot bot-secret",
+      "Content-Type": "application/json",
+    });
     expect(String(init.body)).toContain(`${env.commanderLinkWebUrl}/r/${roomId}`);
     expect(String(init.body)).toContain(`${env.commanderLinkWebUrl}/app/${roomId}`);
   });

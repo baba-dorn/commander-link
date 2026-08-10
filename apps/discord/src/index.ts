@@ -51,14 +51,21 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
     return json(400, { error: "bad_request" });
   }
 
-  const { decision, response, roomId, channelId, shareButtonEnabled } = handleInteraction(config, interaction);
+  const { decision, response, roomId, guildId, guildName, channelId, shareButtonEnabled } = handleInteraction(config, interaction);
 
   if (decision === "share") {
     const payload = interaction as { user?: { global_name?: string; username?: string } };
+    console.log("[share config]", {
+      hasCommanderChannelId: Boolean(channelId),
+      hasBotToken: Boolean(env.DISCORD_BOT_TOKEN),
+      guildId,
+      guildName,
+    });
     try {
       if (!roomId) throw new ShareError("invalid_room");
       await shareRoom(roomId, payload.user?.global_name ?? payload.user?.username, {
         commanderLinkApiUrl: env.COMMANDER_LINK_API_URL,
+        guildId,
         commanderChannelId: channelId,
         discordBotToken: env.DISCORD_BOT_TOKEN,
         commanderLinkWebUrl: env.COMMANDER_LINK_WEB_URL,
@@ -72,7 +79,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
       else console.error("commander-room share failed unexpected");
       return json(200, {
         type: 4,
-        data: { content: "Der Commander-Kanal konnte nicht erreicht werden.", flags: EPHEMERAL },
+        data: { content: `Teilen fehlgeschlagen: ${err instanceof ShareError ? err.message : "channel_unavailable"}`, flags: EPHEMERAL },
       });
     }
   }
