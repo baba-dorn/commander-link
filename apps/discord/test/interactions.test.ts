@@ -306,7 +306,7 @@ describe("handleInteractions room creation", () => {
     expect(init.headers.Authorization).toBe("Bearer it-is-a-secret");
   });
 
-  it("publishes a browser URL and an Electron deep link for the same room", async () => {
+  it("publishes a browser URL and an HTTPS app launcher URL for the same room", async () => {
     const roomId = "bb63eaf988d4415e8f23413c4eeb566";
     const inviteUrl = `https://commander-link.joinoops.win/r/${roomId}`;
     mockApiFetch(201, {
@@ -321,8 +321,12 @@ describe("handleInteractions room creation", () => {
     expect(status).toBe(200);
     const content = (body as { data: { content: string } }).data.content;
     expect(content).toContain(inviteUrl);
-    expect(content).toContain(`commanderlink://join/${roomId}`);
-    // The room id appears in both links via the extracted room id.
+    // App launcher should be an HTTPS URL, not a raw custom protocol
+    const appLauncherUrl = `https://commander-link.joinoops.win/app/${roomId}`;
+    expect(content).toContain(appLauncherUrl);
+    // Should NOT contain the raw custom protocol
+    expect(content).not.toContain("commanderlink://");
+    // The room id appears in both links
     expect(content).toContain(roomId);
   });
 
@@ -451,7 +455,7 @@ describe("validateGuildConfig", () => {
 // ---------------------------------------------------------------------------
 
 describe("roomCreatedResponse", () => {
-  it("embeds both the browser invite and the Commander Link deep link for the same room", () => {
+  it("embeds both the browser invite and an HTTPS app launcher for the same room", () => {
     const roomId = "bb63eaf988d4415e8f23413c4eeb566";
     const inviteUrl = `https://commander-link.joinoops.win/r/${roomId}`;
     const response = roomCreatedResponse(inviteUrl, roomId);
@@ -460,8 +464,23 @@ describe("roomCreatedResponse", () => {
     expect(data.data.content).toContain("Im Browser öffnen");
     expect(data.data.content).toContain(inviteUrl);
     expect(data.data.content).toContain("In der Commander-Link-App öffnen");
-    expect(data.data.content).toContain(`commanderlink://join/${roomId}`);
+    // Should use HTTPS app launcher, not raw custom protocol
+    const appLauncherUrl = `https://commander-link.joinoops.win/app/${roomId}`;
+    expect(data.data.content).toContain(appLauncherUrl);
+    expect(data.data.content).not.toContain("commanderlink://");
     expect(data.data.flags).toBe(1 << 6); // ephemeral
     expect(data.data.components).toBeTruthy();
+    
+    // Verify button structure has two buttons
+    const components = data.data.components as Array<{
+      type: number;
+      components: Array<{ type: number; style: number; label: string; url: string }>;
+    }>;
+    expect(components).toHaveLength(1);
+    expect(components[0].components).toHaveLength(2);
+    expect(components[0].components[0].label).toBe("Im Browser öffnen");
+    expect(components[0].components[0].url).toBe(inviteUrl);
+    expect(components[0].components[1].label).toBe("In der App öffnen");
+    expect(components[0].components[1].url).toBe(appLauncherUrl);
   });
 });

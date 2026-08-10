@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { deepLinkForRoom } from "@commander-link/core";
 import { getGuildConfig, isGuildDisabled } from "./guild-config";
 
 /**
@@ -182,20 +181,24 @@ export function handleInteraction(
 
 /**
  * Build the ephemeral success response describing a fresh invite with two
- * launch paths for the SAME room: a browser HTTPS link and an Electron
- * `commanderlink://` deep link. Both must be reachable from the invite URL.
+ * launch paths for the SAME room: a browser HTTPS link and an HTTPS app
+ * launcher that attempts to open the installed desktop application.
+ * Both must be reachable from the invite URL.
  */
 export function roomCreatedResponse(inviteUrl: string, roomId: string): DiscordResponse {
+  const appLauncherUrl = inviteUrl.replace(/\/r\/([^/]+)$/, "/app/$1");
+  
   return {
     type: 4,
     data: {
-      content: `Commander-Link-Raum erstellt.\n\n🌐 Im Browser öffnen\n${inviteUrl}\n\n🖥 In der Commander-Link-App öffnen\n${deepLinkForRoom(roomId)}\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`,
+      content: `Commander-Link-Raum erstellt.\n\n🌐 Im Browser öffnen\n${inviteUrl}\n\n🖥 In der Commander-Link-App öffnen\n${appLauncherUrl}\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`,
       flags: EPHEMERAL,
       components: [
         {
           type: 1,
           components: [
-            { type: 2, style: 5, label: "Commander Link öffnen", url: inviteUrl },
+            { type: 2, style: 5, label: "Im Browser öffnen", url: inviteUrl },
+            { type: 2, style: 5, label: "In der App öffnen", url: appLauncherUrl },
           ],
         },
       ],

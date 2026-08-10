@@ -24,6 +24,7 @@ import type { SpeakerLevel } from "./audio-level";
 import type { TransportDiagnostics } from "./transport";
 
 const ROOM_PATH = /^\/r\/([A-Za-z0-9_-]{20,128})$/;
+const APP_LAUNCHER_PATH = /^\/app\/([A-Za-z0-9_-]{20,128})$/;
 
 // Development-only diagnostics: visible in `vite dev` or with `?diag` in the URL.
 const DIAGNOSTICS_ENABLED =
@@ -95,16 +96,27 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
 }
 
 function currentRoomId(): string | null {
-  const match = window.location.pathname.match(ROOM_PATH);
-  return match ? match[1] : null;
+  const roomMatch = window.location.pathname.match(ROOM_PATH);
+  if (roomMatch) return roomMatch[1];
+  
+  const appMatch = window.location.pathname.match(APP_LAUNCHER_PATH);
+  if (appMatch) return appMatch[1];
+  
+  return null;
+}
+
+function isAppLauncher(): boolean {
+  return APP_LAUNCHER_PATH.test(window.location.pathname);
 }
 
 function App() {
   const [roomId, setRoomId] = useState<string | null>(currentRoomId());
+  const [isLauncher, setIsLauncher] = useState<boolean>(isAppLauncher());
 
   const navigate = useCallback((id: string | null) => {
     window.history.pushState({}, "", id ? `/r/${id}` : "/");
     setRoomId(id);
+    setIsLauncher(false);
   }, []);
 
   // Desktop deep links route straight into a room.
@@ -119,10 +131,17 @@ function App() {
   }, [navigate]);
 
   useEffect(() => {
-    const onPop = () => setRoomId(currentRoomId());
+    const onPop = () => {
+      setRoomId(currentRoomId());
+      setIsLauncher(isAppLauncher());
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  if (isLauncher && roomId) {
+    return <AppLauncherView roomId={roomId} />;
+  }
 
   return roomId ? <JoinView roomId={roomId} /> : <HomeView onEnterRoom={navigate} />;
 }
@@ -133,6 +152,66 @@ function Brand() {
       <span className="brand-mark" aria-hidden="true" />
       <span className="brand-text">Commander Link</span>
     </div>
+  );
+}
+
+function AppLauncherView({ roomId }: { roomId: string }) {
+  const [attempted, setAttempted] = useState(false);
+
+  useEffect(() => {
+    // Attempt to launch the desktop app via custom protocol
+    const deepLinkUrl = `commanderlink://join/${roomId}`;
+    
+    // Create a hidden iframe to attempt the custom protocol launch
+    // This is more reliable than window.location for some browsers
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = deepLinkUrl;
+    document.body.appendChild(iframe);
+    
+    // Clean up iframe after a short delay
+    const timer = setTimeout(() => {
+      document.body.removeChild(iframe);
+      setAttempted(true);
+    }, 1000);
+    
+    // Also try window.location as fallback mechanism
+    window.location.href = deepLinkUrl;
+    
+    return () => {
+      clearTimeout(timer);
+      if (iframe.parentNode) {
+        try {
+          document.body.removeChild(iframe);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    };
+  }, [roomId]);
+
+  const browserUrl = `/r/${roomId}`;
+
+  return (
+    <main className="shell launcher">
+      <Brand />
+      <section className="panel panel-centered">
+        <h1>Commander Link wird geöffnet …</h1>
+        <p className="lead">
+          Falls die App nicht automatisch startet:
+        </p>
+        <div className="launcher-actions">
+          <a className="btn btn-primary btn-block" href={browserUrl}>
+            Im Browser öffnen
+          </a>
+          {showWindowsDownload() && (
+            <a className="btn btn-secondary btn-block" href={WINDOWS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+              Commander Link herunterladen
+            </a>
+          )}
+        </div>
+      </section>
+    </main>
   );
 }
 
