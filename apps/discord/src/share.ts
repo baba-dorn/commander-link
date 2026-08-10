@@ -138,24 +138,18 @@ async function publishRoom(roomId: string, creatorName: string | undefined, env:
   });
 
   if (!response.ok) {
-    console.error("[discord] commander share failed", {
-      guildId: env.guildId,
-      commanderChannelId: env.commanderChannelId,
+    const discordMessage = errorBody?.message
+      ?.replace(/[\r\n\t]/g, " ")
+      .slice(0, 200);
+    console.error("[share] discord post failed", {
       status: response.status,
       discordCode: errorBody?.code,
-      discordMessage: errorBody?.message,
-      discordCase: classifyDiscordError(response.status, errorBody?.message),
+      discordMessage,
+      commanderChannelId: env.commanderChannelId,
     });
-    throw new ShareError("channel_unavailable");
+    throw new ShareError(
+      `channel_unavailable:http_${response.status}:discord_${errorBody?.code ?? "unknown"}:${discordMessage ?? "unknown"}`
+    );
   }
   return "shared" as const;
-}
-
-function classifyDiscordError(status: number, message: string | undefined): string {
-  if (status === 403 && message === "Missing Permissions") return "missing_permissions";
-  if (status === 403 && message === "Missing Access") return "missing_access";
-  if (status === 404 && message === "Unknown Channel") return "unknown_channel";
-  if (status === 401 && message === "Unauthorized") return "unauthorized";
-  if (status === 400 && message === "Invalid Form Body") return "invalid_form_body";
-  return "other_discord_error";
 }
