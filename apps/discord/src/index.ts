@@ -7,7 +7,6 @@ export interface Env {
   DISCORD_APPLICATION_ID: string;
   COMMANDER_LINK_API_URL: string;
   ROOM_CREATE_SECRET: string;
-  COMMANDER_CHANNEL_ID?: string;
   DISCORD_BOT_TOKEN?: string;
   COMMANDER_LINK_WEB_URL?: string;
 }
@@ -52,7 +51,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
     return json(400, { error: "bad_request" });
   }
 
-  const { decision, response, roomId } = handleInteraction(config, interaction);
+  const { decision, response, roomId, channelId } = handleInteraction(config, interaction);
 
   if (decision === "share") {
     const payload = interaction as { user?: { global_name?: string; username?: string } };
@@ -60,7 +59,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
       if (!roomId) throw new ShareError("invalid_room");
       await shareRoom(roomId, payload.user?.global_name ?? payload.user?.username, {
         commanderLinkApiUrl: env.COMMANDER_LINK_API_URL,
-        commanderChannelId: env.COMMANDER_CHANNEL_ID,
+        commanderChannelId: channelId,
         discordBotToken: env.DISCORD_BOT_TOKEN,
         commanderLinkWebUrl: env.COMMANDER_LINK_WEB_URL,
       });
@@ -89,7 +88,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
     });
     return json(
       200,
-      roomCreatedResponse(room.inviteUrl, room.roomId, Boolean(env.COMMANDER_CHANNEL_ID && env.DISCORD_BOT_TOKEN))
+      roomCreatedResponse(room.inviteUrl, room.roomId, Boolean(channelId && env.DISCORD_BOT_TOKEN))
     );
   } catch (err) {
     // Never ship internal detail or credentials back to Discord.

@@ -3,16 +3,19 @@
     "450409169795678229": {
       "name": "Commander Link Test",
       "commanderRoleId": "1249351808522915991",
+      "commanderChannelId": "123456789012345678",
       "enabled": true
     },
     "333333333333333333": {
       "name": "OOPS",
       "commanderRoleId": "444444444444444444",
+      "commanderChannelId": "123456789012345678",
       "enabled": true
     },
     "555555555555555555": {
       "name": "Disabled Placeholder",
       "commanderRoleId": "666666666666666666",
+      "commanderChannelId": "123456789012345678",
       "enabled": false
     }
   }

@@ -1,7 +1,7 @@
 # Discord invitation sharing
 
 `/commander` remains an ephemeral private room-creation response. When
-`COMMANDER_CHANNEL_ID` and `DISCORD_BOT_TOKEN` are configured, the response also
+`commanderChannelId` in the current guild configuration and `DISCORD_BOT_TOKEN` are configured, the response also
 contains **An Commander senden**. Clicking it publishes the existing room's
 browser and app links to that channel; it never creates another room.
 
@@ -12,7 +12,7 @@ channel. Administrator permission is not required.
 Required Discord Worker configuration:
 
 ```text
-COMMANDER_CHANNEL_ID=<discord-channel-id>
+commanderChannelId=<discord-channel-id>  # in config/guilds.json, per guild
 COMMANDER_LINK_WEB_URL=https://commander-link.joinoops.win
 ```
 

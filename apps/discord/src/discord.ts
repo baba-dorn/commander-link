@@ -17,7 +17,6 @@ export interface DiscordConfig {
   publicKey: string;
   /** Discord Application ID (safe identifier). */
   applicationId: string;
-  commanderChannelId?: string;
 }
 
 const DiscordConfigSchema = z.object({
@@ -30,7 +29,6 @@ export function readConfig(env: Record<string, string | undefined>): DiscordConf
   const parsed = DiscordConfigSchema.safeParse({
     publicKey: env.DISCORD_PUBLIC_KEY,
     applicationId: env.DISCORD_APPLICATION_ID,
-    commanderChannelId: env.COMMANDER_CHANNEL_ID || undefined,
   });
   if (!parsed.success) {
     throw new Error("missing or invalid Discord configuration");
@@ -164,7 +162,7 @@ function denyMessage(guildId: string | undefined): string {
 export function handleInteraction(
   config: DiscordConfig,
   interaction: unknown
-): { decision: "pong" | "create" | "share" | "deny" | "unknown"; response: DiscordResponse; roomId?: string } {
+): { decision: "pong" | "create" | "share" | "deny" | "unknown"; response: DiscordResponse; roomId?: string; channelId?: string } {
   const ping = interaction as InteractionPing;
   if (ping && ping.type === PING_TYPE) {
     return { decision: "pong", response: { type: 1 } };
@@ -179,7 +177,7 @@ export function handleInteraction(
     if (!roomId || !guild || !Array.isArray(roles) || !roles.includes(guild.commanderRoleId)) {
       return { decision: "deny", response: { type: 4, data: { content: "Diese Teilen-Aktion ist nicht gültig oder nicht erlaubt.", flags: EPHEMERAL } } };
     }
-    return { decision: "share", roomId, response: { type: 4, data: { flags: EPHEMERAL } } };
+    return { decision: "share", roomId, channelId: guild.commanderChannelId, response: { type: 4, data: { flags: EPHEMERAL } } };
   }
   if (!cmd || cmd.type !== APPLICATION_COMMAND_TYPE || !cmd.data || cmd.data.name !== "commander") {
     // Unknown / unsupported interaction: fail safely and predictably.
@@ -209,7 +207,7 @@ export function handleInteraction(
     };
   }
 
-  return { decision: "create", response: { type: 4, data: { flags: EPHEMERAL } } as DiscordResponse };
+  return { decision: "create", channelId: guild.commanderChannelId, response: { type: 4, data: { flags: EPHEMERAL } } as DiscordResponse };
 }
 
 /**

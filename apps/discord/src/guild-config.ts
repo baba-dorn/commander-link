@@ -15,6 +15,8 @@ import rawConfig from "../config/guilds.json";
 export interface GuildConfig {
   name: string;
   commanderRoleId: string;
+  /** Channel receiving shared invitations for this guild. */
+  commanderChannelId?: string;
   enabled: boolean;
 }
 
@@ -25,6 +27,7 @@ export interface DiscordGuildConfig {
 const GuildConfigSchema = z.object({
   name: z.string().min(1),
   commanderRoleId: z.string().min(1),
+  commanderChannelId: z.string().regex(/^\d+$/).optional(),
   enabled: z.boolean(),
 });
 
