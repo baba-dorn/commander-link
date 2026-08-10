@@ -2,6 +2,7 @@
   "name": "@commander-link/desktop",
   "private": true,
   "version": "0.1.3",
+  "author": "Baba Dorn",
   "main": "dist/main.js",
   "scripts": {
     "dev": "tsc && electron .",

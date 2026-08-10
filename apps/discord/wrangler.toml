@@ -11,8 +11,7 @@ crons = ["*/5 * * * *"]
 
 [[kv_namespaces]]
 binding = "INVITATION_TRACKING"
-id = "00000000000000000000000000000000"
-preview_id = "00000000000000000000000000000000"
+id = "2751a375ee0948419a1b805c42a567c6"
 
 # Commander Link Discord interaction worker.
 #

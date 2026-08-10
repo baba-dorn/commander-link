@@ -291,7 +291,7 @@ pnpm dev
 # Configure secrets once (never commit them)
 cd apps/discord
 wrangler secret put ROOM_CREATE_SECRET
-wrangler secret put DISCORD_BOT_TOKEN        # optional; only for the register script
+wrangler secret put DISCORD_BOT_TOKEN        # required for publishing and cleanup
 cd ../..
 
 # Create the persistent invitation store once, then put its id in
