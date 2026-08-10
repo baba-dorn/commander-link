@@ -11,9 +11,19 @@ import {
   type SpeakerLevel,
 } from "./audio-level";
 import {
+  addGatheredCandidate,
+  addressFamilyOf,
   candidatePairSummary,
+  candidateTypeOf,
   collectCandidatePair,
+  emptyGatheredCandidates,
+  gatheredCandidatesLine,
+  iceServersSummaryLine,
+  protocolOf,
+  summarizeIceServers,
   type CandidatePairInfo,
+  type GatheredCandidatesSummary,
+  type IceServersSummary,
 } from "./diagnostics";
 import {
   applyPeerJoined,
@@ -110,9 +120,11 @@ export class MeteredRealtimeTransport implements VoiceTransport {
   private remoteAudioEnabled = new Map<string, boolean | null>();
   private remoteDestroyed = new Set<string>();
   private remoteTracks = new Map<string, MediaStreamTrack>();
+  private remoteGathered = new Map<string, GatheredCandidatesSummary>();
   private pendingActiveTimers: number[] = [];
   private cachedHistory: LogEvent[] = [];
   private historyTimer: number | null = null;
+  private iceServersSummary: IceServersSummary = { received: false, stunCount: 0, turnCount: 0, entries: [] };
   private localInfo: { id: string; name: string } | null = null;
   private readonly audioElements = new Map<string, HTMLAudioElement>();
   private readonly remoteStreamIds = new Map<string, string>();
@@ -196,6 +208,11 @@ export class MeteredRealtimeTransport implements VoiceTransport {
     this.emitPeers();
     this.callbacks.onStatus("connected");
     logWebrtc("WEBRTC_CONNECTED_SNAPSHOT", this.snapshotLine("connected"));
+    // If no peer has joined yet, the welcome's iceServers will be picked up by
+    // the first peer-joined handler; report it as soon as it is known.
+    if (this.iceServersSummary.received) {
+      logWebrtc("TURN_CONFIG", iceServersSummaryLine(this.iceServersSummary));
+    }
     void this.captureSnapshot("WEBRTC_CONNECTED");
     // Keep a bounded event history for the copy-diagnostics report (read by the
     // debug UI's polling). No console spam: it just refreshes an in-memory array.
@@ -228,6 +245,8 @@ export class MeteredRealtimeTransport implements VoiceTransport {
     this.remoteAudioEnabled.clear();
     this.remoteDestroyed.clear();
     this.remoteTracks.clear();
+    this.remoteGathered.clear();
+    this.iceServersSummary = { received: false, stunCount: 0, turnCount: 0, entries: [] };
     this.localInfo = null;
     this.session = null;
     this.monitor.dispose();
@@ -303,6 +322,7 @@ export class MeteredRealtimeTransport implements VoiceTransport {
           getStats?: () => Promise<unknown>;
         };
         const pair = await collectCandidatePair(pc);
+        const gathered = this.remoteGathered.get(remote.id) ?? emptyGatheredCandidates();
         remotePeers.push({
           id: remote.id,
           name: nameFromMetadata(remote.metadata) || "Unbekannt",
@@ -322,9 +342,17 @@ export class MeteredRealtimeTransport implements VoiceTransport {
           audioTrackState: this.remoteAudioTrackState.get(remote.id) ?? null,
           audioMuted: this.remoteAudioMuted.get(remote.id) ?? null,
           audioEnabled: this.remoteAudioEnabled.get(remote.id) ?? null,
+          gathered: gatheredCandidatesLine(gathered),
+          gatheredHost: gathered.host,
+          gatheredSrflx: gathered.srflx,
+          gatheredPrflx: gathered.prflx,
+          gatheredRelay: gathered.relay,
+          gatheredTotal: gathered.total,
+          turnCandidateAvailable: gathered.turnCandidate,
         });
       }
     }
+    const iceServers = this.iceServersSummary;
     return {
       roomId: this.session?.roomId ?? "",
       channel: this.session?.channel ?? "",
@@ -332,6 +360,19 @@ export class MeteredRealtimeTransport implements VoiceTransport {
       state: peer?.state ?? "idle",
       remotePeers,
       events: this.snapshotHistory(),
+      iceServers: {
+        received: iceServers.received,
+        stunCount: iceServers.stunCount,
+        turnCount: iceServers.turnCount,
+        entries: iceServers.entries.map((e) => ({
+          scheme: e.scheme,
+          hostname: e.hostname,
+          port: e.port,
+          transport: e.transport,
+          hasUsername: e.hasUsername,
+          hasCredential: e.hasCredential,
+        })),
+      },
     };
   }
 
@@ -369,12 +410,31 @@ export class MeteredRealtimeTransport implements VoiceTransport {
       this.emitPeers();
     });
 
+    // The Metered welcome frame's `metadata.iceServers` (auto-injected TURN) is
+    // applied by the SDK to every RTCPeerConnection it builds. We observe it via
+    // the first peer's configuration as soon as it exists; no credential values
+    // are ever read or logged.
     peer.on("peer-joined", ({ peer: remote }) => {
       const id = remote.id;
       const name = nameFromMetadata(remote.metadata) || "Unbekannt";
       this.roster = applyPeerJoined(this.roster, { id, name });
       this.remoteStates.set(id, remote.state);
       this.wireRemotePeer(remote, name);
+      if (!this.iceServersSummary.received) {
+        const pc = remote.pc as unknown as { getConfiguration?: () => { iceServers?: unknown } };
+        if (typeof pc?.getConfiguration === "function") {
+          try {
+            const cfg = pc.getConfiguration();
+            this.iceServersSummary = summarizeIceServers(cfg.iceServers);
+            const line = iceServersSummaryLine(this.iceServersSummary);
+            logWebrtc("TURN_CONFIG", line);
+          } catch {
+            logWebrtc("TURN_CONFIG", "read failed (getConfiguration threw)");
+          }
+        } else {
+          logWebrtc("TURN_CONFIG", "unavailable (getConfiguration not exposed)");
+        }
+      }
 
       remote.on("stream-added", ({ stream }) => this.attachRemoteAudio(id, stream));
       remote.on("stream-removed", () => this.detachRemoteAudio(id));
@@ -415,7 +475,7 @@ export class MeteredRealtimeTransport implements VoiceTransport {
         iceConnectionState?: string;
         iceGatheringState?: string;
         signalingState?: string;
-        addEventListener?: (type: string, listener: () => void) => void;
+        addEventListener?: (type: string, listener: (ev?: unknown) => void) => void;
         removeEventListener?: (type: string, listener: () => void) => void;
         getStats?: () => Promise<unknown>;
       } | null;
@@ -477,10 +537,45 @@ export class MeteredRealtimeTransport implements VoiceTransport {
       // IceGatheringState transitions: new -> gathering -> complete.
       pc.addEventListener?.("icegatheringstatechange", () => {
         if (this.remotePcs.get(id) !== pc) return;
+        const gathering = pc.iceGatheringState ?? "?";
         logWebrtc(
           "ICE_GATHERING_STATE",
-          `[${this.peerLabel(id, displayName)}] iceGatheringState=${pc.iceGatheringState ?? "?"}`
+          `[${this.peerLabel(id, displayName)}] iceGatheringState=${gathering} ${pcStateOf(pc)}`
         );
+        if (gathering === "complete") {
+          const gathered = this.remoteGathered.get(id) ?? emptyGatheredCandidates();
+          logWebrtc(
+            "ICE_GATHERED_SUMMARY",
+            `[${this.peerLabel(id, displayName)}] ${gatheredCandidatesLine(gathered)}`
+          );
+        }
+      });
+
+      // ICE candidates as they are gathered. Only type/protocol/family are
+      // logged — never the candidate string, addresses or credentials.
+      pc.addEventListener?.("icecandidate", (ev: unknown) => {
+        if (this.remotePcs.get(id) !== pc) return;
+        const candidate = (ev as { candidate?: unknown }).candidate as {
+          type?: unknown;
+          candidateType?: unknown;
+          protocol?: unknown;
+          address?: unknown;
+          addressFamily?: unknown;
+          relayProtocol?: unknown;
+        } | null;
+        if (!candidate) return; // end-of-candidates marker
+        const type = candidateTypeOf(candidate);
+        const protocol = protocolOf(candidate);
+        const family = addressFamilyOf(candidate);
+        const relay = typeof candidate.relayProtocol === "string" ? candidate.relayProtocol : null;
+        this.remoteGathered.set(
+          id,
+          addGatheredCandidate(this.remoteGathered.get(id) ?? emptyGatheredCandidates(), type)
+        );
+        const parts = [`type=${type ?? "?"}`, `proto=${protocol ?? "?"}`];
+        if (family) parts.push(`family=${family}`);
+        if (relay) parts.push(`relay=${relay}`);
+        logWebrtc("ICE_CANDIDATE", `[${this.peerLabel(id, displayName)}] ${parts.join(" ")}`);
       });
 
       // SignalingState transitions (only fired on renegotiation).

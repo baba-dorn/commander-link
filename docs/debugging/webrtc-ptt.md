@@ -42,9 +42,19 @@ Console lines are prefixed `[webrtc]` and include:
 - peer destruction with a reason label: `manual-leave`, `connection-failed`,
   `ice-failed`, `remote-left`, `track-ended`, `application-shutdown`,
   `unknown`
+- the Metered ICE configuration (`TURN_CONFIG`): whether `metadata.iceServers`
+  arrived in the welcome, the STUN vs TURN/TURNS count, and per-server
+  scheme/hostname/port/transport only — never credentials
+- per-gathered-candidate lines (`ICE_CANDIDATE`): type (`host` / `srflx` /
+  `prflx` / `relay`), protocol (`udp`/`tcp`), address family and relay protocol
+  — never addresses or the raw candidate string
+- a per-peer gathering summary on `iceGatheringState = complete`
+  (`ICE_GATHERED_SUMMARY`): host/srflx/prflx/relay counts plus
+  `turnCandidate=YES/NO`
 
 Diagnostics never include access tokens, authorization headers, Metered
-secrets or TURN passwords.
+secrets or TURN passwords (usernames/passwords are only reported as
+"credentials present", never as values).
 
 ## Test scenario
 
@@ -84,5 +94,30 @@ Repeat with the roles reversed (Client B → Client A).
 - G) Does a heartbeat timeout remove the participant?
 - H) Does the selected ICE candidate pair change when audio traffic starts?
 - I) Do RTP `bytesSent` / `packetsSent` increase while PTT is active?
+
+## ICE candidate provisioning (the two decisive questions)
+
+When a real two-network test stays stuck in `iceConnectionState = checking`
+with **no selected candidate pair**, the `Copy diagnostics` output answers two
+conclusive questions:
+
+- **Q1 — Does Metered actually send TURN/STUN configuration to Commander
+  Link?** Look at `Metered ICE configuration (welcome)`:
+  - `TURN configuration received: YES/NO`
+  - `STUN server count: N` and `TURN/TURNS server count: N`
+  - per-server `scheme:hostname:port?transport=` lines (credentials are only
+    flagged as "credentials present, not shown")
+- **Q2 — Does the browser actually gather at least one `relay` candidate?**
+  Look at each peer's `ICE candidates gathered:` line and
+  `TURN candidate available: YES/NO`, plus the `ICE_CANDIDATE` / `ICE_GATHERED_SUMMARY`
+  console lines.
+
+Diagnosis matrix:
+
+| TURN config received | relay candidate gathered | Conclusion |
+|---|---|---|
+| YES | YES | ICE should work over relay — failure is elsewhere (pair selection / signalling of candidates) |
+| YES | NO | TURN is configured but the browser is not gathering relay candidates (iceServers not applied, credential rejected, or TURN service down) |
+| NO | NO | Metered is not sending any ICE config — root cause is server-side key config ("Auto-inject TURN" / TURN service) |
 
 The next step is to fix based on that evidence, not before.

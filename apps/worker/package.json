@@ -3,7 +3,20 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": {"dev":"wrangler dev","build":"wrangler deploy --dry-run","typecheck":"tsc --noEmit","test":"vitest run --passWithNoTests"},
-  "dependencies": {"@commander-link/core":"workspace:*"},
-  "devDependencies": {"@cloudflare/workers-types":"^5.20260804.1","typescript":"^5.9.0","vitest":"^3.2.0","wrangler":"^4.28.0"}
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "wrangler:deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@commander-link/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.28.0"
+  }
 }

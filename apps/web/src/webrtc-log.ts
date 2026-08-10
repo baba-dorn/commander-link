@@ -117,6 +117,19 @@ export function formatDiagnosticsReport(input: {
   channel: string;
   localPeerId: string;
   state: string;
+  iceServers?: {
+    received: boolean;
+    stunCount: number;
+    turnCount: number;
+    entries: Array<{
+      scheme: string;
+      hostname: string;
+      port: string | null;
+      transport: string | null;
+      hasUsername: boolean;
+      hasCredential: boolean;
+    }>;
+  };
   peers: Array<{
     name: string;
     id: string;
@@ -135,6 +148,8 @@ export function formatDiagnosticsReport(input: {
     audioTrackState: string;
     audioMuted: boolean | null;
     audioEnabled: boolean | null;
+    gathered?: string;
+    turnCandidateAvailable?: boolean;
   }>;
   history: readonly LogEvent[];
 }): string {
@@ -155,6 +170,20 @@ export function formatDiagnosticsReport(input: {
   lines.push("state:");
   lines.push(`  ${input.state}`);
   lines.push("");
+  const ice = input.iceServers;
+  if (ice) {
+    lines.push("Metered ICE configuration (welcome):");
+    lines.push(`  TURN configuration received: ${ice.received ? "YES" : "NO"}`);
+    lines.push(`  STUN server count: ${ice.stunCount}`);
+    lines.push(`  TURN/TURNS server count: ${ice.turnCount}`);
+    for (const entry of ice.entries) {
+      const port = entry.port ? `:${entry.port}` : "";
+      const transport = entry.transport ? `?transport=${entry.transport}` : "";
+      const creds = entry.hasUsername || entry.hasCredential ? " (credentials present, not shown)" : "";
+      lines.push(`  - ${entry.scheme}:${entry.hostname}${port}${transport}${creds}`);
+    }
+    lines.push("");
+  }
   for (const p of input.peers) {
     lines.push(`Peer: ${p.name} (${p.id.slice(0, 8)}…)`);
     lines.push(`  connectionState: ${p.connectionState}`);
@@ -170,6 +199,8 @@ export function formatDiagnosticsReport(input: {
     lines.push(`  bytesReceived: ${p.bytesReceived ?? "n/a"}`);
     lines.push(`  packetsSent: ${p.packetsSent ?? "n/a"}`);
     lines.push(`  packetsReceived: ${p.packetsReceived ?? "n/a"}`);
+    lines.push(`  ICE candidates gathered: ${p.gathered ?? "n/a"}`);
+    lines.push(`  TURN candidate available: ${p.turnCandidateAvailable === undefined ? "n/a" : p.turnCandidateAvailable ? "YES" : "NO"}`);
     lines.push(`  audioTrack: ${p.audioTrackState}`);
     lines.push(`  audioEnabled: ${p.audioEnabled === null ? "n/a" : String(p.audioEnabled)}`);
     lines.push(`  audioMuted: ${p.audioMuted === null ? "n/a" : String(p.audioMuted)}`);

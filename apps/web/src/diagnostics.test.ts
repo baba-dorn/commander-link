@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  addGatheredCandidate,
+  addressFamilyOf,
   candidatePairSummary,
+  candidateTypeOf,
   collectCandidatePair,
   collectCandidateType,
+  emptyGatheredCandidates,
+  gatheredCandidatesLine,
+  iceServersSummaryLine,
+  parseIceServerUrl,
+  protocolOf,
   selectedCandidatePair,
   selectedCandidateType,
+  summarizeIceServers,
 } from "./diagnostics";
 
 function report(values: Array<Record<string, unknown>>) {
@@ -200,5 +209,148 @@ describe("collectCandidatePair", () => {
       },
     });
     expect(pair.localCandidateType).toBeNull();
+  });
+});
+
+describe("parseIceServerUrl", () => {
+  it("parses a plain stun URL", () => {
+    expect(parseIceServerUrl("stun:stun.l.google.com:19302")).toEqual({
+      scheme: "stun",
+      hostname: "stun.l.google.com",
+      port: "19302",
+      transport: null,
+      hasUsername: false,
+      hasCredential: false,
+    });
+  });
+
+  it("parses a turns URL with explicit transport and strips credentials", () => {
+    const info = parseIceServerUrl(
+      "turns:turn.example.com:5349?transport=tcp"
+    );
+    expect(info).toEqual({
+      scheme: "turns",
+      hostname: "turn.example.com",
+      port: "5349",
+      transport: "tcp",
+      hasUsername: false,
+      hasCredential: false,
+    });
+  });
+
+  it("flags embedded userinfo without exposing its value", () => {
+    const info = parseIceServerUrl("turn:user123:super-secret@turn.example.com:3478");
+    expect(info?.scheme).toBe("turn");
+    expect(info?.hostname).toBe("turn.example.com");
+    expect(info?.port).toBe("3478");
+    expect(info?.hasUsername).toBe(true);
+    expect(info?.hasCredential).toBe(true);
+    const serialized = JSON.stringify(info);
+    expect(serialized).not.toContain("super-secret");
+    expect(serialized).not.toContain("user123");
+  });
+
+  it("handles IPv6 bracket hosts", () => {
+    const info = parseIceServerUrl("stun:[2001:db8::1]:3478");
+    expect(info?.hostname).toBe("2001:db8::1");
+    expect(info?.port).toBe("3478");
+  });
+
+  it("returns null for non-strings and marks unknown schemes", () => {
+    expect(parseIceServerUrl(42)).toBeNull();
+    expect(parseIceServerUrl("")).toBeNull();
+    expect(parseIceServerUrl("http://example.com")?.scheme).toBe("other");
+  });
+
+  it("defaults to null port/transport when omitted", () => {
+    const info = parseIceServerUrl("stun:stun.example.com");
+    expect(info?.port).toBeNull();
+    expect(info?.transport).toBeNull();
+  });
+});
+
+describe("summarizeIceServers", () => {
+  it("counts STUN vs TURN entries from urls arrays and dictionary fields", () => {
+    const summary = summarizeIceServers([
+      { urls: ["stun:stun.example.com:3478", "stun:stun2.example.com:3478"] },
+      {
+        urls: "turn:turn.example.com:3478?transport=udp",
+        username: "ts",
+        credential: "hmac-secret",
+      },
+      { urls: "turns:turn.example.com:5349?transport=tcp" },
+      { urls: "not-an-ice-url" },
+      "not-an-object",
+    ]);
+    expect(summary.received).toBe(true);
+    expect(summary.stunCount).toBe(2);
+    expect(summary.turnCount).toBe(2);
+    const turnEntry = summary.entries.find((e) => e.scheme === "turn");
+    expect(turnEntry?.hasUsername).toBe(true);
+    expect(turnEntry?.hasCredential).toBe(true);
+    const serialized = JSON.stringify(summary);
+    expect(serialized).not.toContain("hmac-secret");
+    expect(serialized).not.toContain("ts");
+  });
+
+  it("reports received=false when iceServers is absent or empty", () => {
+    expect(summarizeIceServers(undefined).received).toBe(false);
+    expect(summarizeIceServers([]).received).toBe(false);
+    expect(summarizeIceServers({ urls: [] }).received).toBe(false);
+  });
+
+  it("renders a compact summary line without secrets", () => {
+    const summary = summarizeIceServers([
+      { urls: "turn:turn.example.com:3478?transport=udp", username: "u", credential: "c" },
+      { urls: "stun:stun.example.com:3478" },
+    ]);
+    const line = iceServersSummaryLine(summary);
+    expect(line).toContain("received=YES");
+    expect(line).toContain("stun=1 turn=1");
+    expect(line).toContain("turn:turn.example.com:3478");
+    expect(line).not.toContain("username");
+    expect(line).not.toContain("credential");
+    expect(line).not.toContain(":c");
+  });
+});
+
+describe("ICE candidate gathering helpers", () => {
+  it("counts candidate types and flags TURN", () => {
+    let s = emptyGatheredCandidates();
+    s = addGatheredCandidate(s, "host");
+    s = addGatheredCandidate(s, "host");
+    s = addGatheredCandidate(s, "srflx");
+    s = addGatheredCandidate(s, "relay");
+    expect(s).toEqual({ host: 2, srflx: 1, prflx: 0, relay: 1, total: 4, turnCandidate: true });
+    expect(gatheredCandidatesLine(s)).toBe(
+      "host=2 srflx=1 prflx=0 relay=1 total=4 turnCandidate=YES"
+    );
+  });
+
+  it("keeps turnCandidate false when only host/srflx are gathered", () => {
+    let s = emptyGatheredCandidates();
+    s = addGatheredCandidate(s, "host");
+    s = addGatheredCandidate(s, "srflx");
+    expect(s.turnCandidate).toBe(false);
+  });
+
+  it("extracts candidate type and protocol from events without exposing addresses", () => {
+    const ev = {
+      type: "host",
+      protocol: "udp",
+      candidate: "candidate:1 1 udp 2122260223 192.0.2.1 54321 typ host",
+    };
+    expect(candidateTypeOf(ev)).toBe("host");
+    expect(protocolOf(ev)).toBe("udp");
+    expect(candidateTypeOf({ candidate: "candidate:1 1 udp 2122260223 192.0.2.1 54321 typ srflx" })).toBe("srflx");
+    expect(protocolOf({ candidate: "candidate:1 1 udp 2122260223 192.0.2.1 54321 typ srflx" })).toBe("udp");
+    expect(candidateTypeOf(null)).toBeNull();
+    expect(protocolOf({})).toBeNull();
+  });
+
+  it("detects address family without returning the address", () => {
+    expect(addressFamilyOf({ address: "192.0.2.1" })).toBeNull();
+    expect(addressFamilyOf({ address: "2001:db8::1" })).toBe("IPv6");
+    expect(addressFamilyOf({ addressFamily: "IPv4" })).toBe("IPv4");
   });
 });

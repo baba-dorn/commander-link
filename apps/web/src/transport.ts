@@ -67,6 +67,33 @@ export interface TransportDiagnosticsPeer {
   audioMuted: boolean | null;
   /** Remote audio track enabled flag when known, else null. */
   audioEnabled: boolean | null;
+  /** Gathered-candidate summary line for this peer (host/srflx/prflx/relay counts). */
+  gathered: string;
+  gatheredHost: number;
+  gatheredSrflx: number;
+  gatheredPrflx: number;
+  gatheredRelay: number;
+  gatheredTotal: number;
+  /** Whether at least one relay (TURN) candidate was gathered for this peer. */
+  turnCandidateAvailable: boolean;
+}
+
+export interface IceServerDiagEntry {
+  scheme: string;
+  hostname: string;
+  port: string | null;
+  transport: "udp" | "tcp" | null;
+  hasUsername: boolean;
+  hasCredential: boolean;
+}
+
+export interface IceServersDiag {
+  /** Whether the Metered welcome delivered any parseable iceServers entry. */
+  received: boolean;
+  stunCount: number;
+  turnCount: number;
+  /** Sanitized entries — scheme/hostname/port/transport only, no credentials. */
+  entries: IceServerDiagEntry[];
 }
 
 export interface TransportDiagnostics {
@@ -78,6 +105,8 @@ export interface TransportDiagnostics {
   remotePeers: TransportDiagnosticsPeer[];
   /** Debug-mode only: recent instrumented events (PTT, ICE, negotiation, tracks). */
   events?: Array<{ time: string; label: string; detail: string }>;
+  /** Sanitized ICE server configuration received from the Metered welcome. */
+  iceServers?: IceServersDiag;
 }
 
 /**

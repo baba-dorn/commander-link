@@ -8,6 +8,8 @@
     "dev:web": "pnpm --filter @commander-link/web dev",
     "dev:worker": "pnpm --filter @commander-link/worker dev",
     "dev:discord": "pnpm --filter @commander-link/discord dev",
+    "deploy:web": "pnpm --filter @commander-link/web build && pnpm --filter @commander-link/web wrangler:deploy",
+    "deploy:worker": "pnpm --filter @commander-link/worker wrangler:deploy",
     "deploy:discord": "pnpm --filter @commander-link/discord wrangler:deploy",
     "register:discord:command": "pnpm --filter @commander-link/discord register:command",
     "dev:desktop": "pnpm --filter @commander-link/desktop dev",

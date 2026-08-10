@@ -83,6 +83,7 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
         channel: current.channel,
         localPeerId: current.localPeerId ?? "",
         state: current.state,
+        iceServers: current.iceServers,
         peers: (current.remotePeers ?? []).map((p) => ({
           name: p.name,
           id: p.id,
@@ -101,6 +102,8 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
           audioTrackState: p.audioTrackState ?? "n/a",
           audioMuted: p.audioMuted,
           audioEnabled: p.audioEnabled,
+          gathered: p.gathered,
+          turnCandidateAvailable: p.turnCandidateAvailable,
         })),
         history: (current.events ?? []) as LogEvent[],
       });
@@ -128,6 +131,8 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
     ["Track", p.audioTrackState ?? "n/a"],
     ["Track enabled", p.audioEnabled === null ? "n/a" : String(p.audioEnabled)],
     ["Track muted", p.audioMuted === null ? "n/a" : String(p.audioMuted)],
+    ["ICE candidates", p.gathered],
+    ["TURN candidate", p.turnCandidateAvailable === null || p.turnCandidateAvailable === undefined ? "n/a" : p.turnCandidateAvailable ? "YES" : "NO"],
   ] as const;
 
   return (
@@ -157,6 +162,33 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
                 <td>Client</td>
                 <td>{CLIENT_PLATFORM} · {PLATFORM_NAME}</td>
               </tr>
+              {diag.iceServers && (
+                <>
+                  <tr>
+                    <td>TURN config received</td>
+                    <td>{diag.iceServers.received ? "YES" : "NO"}</td>
+                  </tr>
+                  <tr>
+                    <td>STUN servers</td>
+                    <td>{diag.iceServers.stunCount}</td>
+                  </tr>
+                  <tr>
+                    <td>TURN servers</td>
+                    <td>{diag.iceServers.turnCount}</td>
+                  </tr>
+                  {diag.iceServers.entries.map((e, i) => (
+                    <tr key={i}>
+                      <td>ICE server {i + 1}</td>
+                      <td>
+                        {e.scheme}:{e.hostname}
+                        {e.port ? `:${e.port}` : ""}
+                        {e.transport ? `?transport=${e.transport}` : ""}
+                        {e.hasUsername || e.hasCredential ? " (creds present)" : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              )}
             </tbody>
           </table>
           {WEBRTC_DEBUG_ENABLED && (
