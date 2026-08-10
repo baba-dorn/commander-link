@@ -135,6 +135,12 @@ file is bundled into the Worker: edit it, then run `pnpm deploy:discord`.
 | `COMMANDER_LINK_API_URL` | Base URL of the Commander Link API Worker (e.g. `https://commander-link-api.<account>.workers.dev`). |
 | `COMMANDER_LINK_WEB_URL` | Public web origin used for shared browser and app links. |
 
+The Worker stores each published invitation in the `INVITATION_TRACKING` KV
+namespace. The configured Cron Trigger (`*/5 * * * *`) checks
+`GET /v1/rooms/:roomId`; only `exists: false` permits deletion of the exact
+tracked Discord message. API outages, malformed responses, permission errors,
+and other temporary Discord failures retain the record for a later retry.
+
 `DISCORD_GUILD_ID` and `DISCORD_COMMANDER_ROLE_ID` are **no longer used** — per-guild
 authorization now comes from `config/guilds.json`.
 
@@ -147,7 +153,7 @@ registration) and is never sent to clients.
 | Variable | Purpose |
 | --- | --- |
 | `ROOM_CREATE_SECRET` | Server-to-server secret for `POST /v1/rooms`. Sent by this worker as `Bearer <secret>` and **enforced** by the API worker: requests without it are rejected. |
-| `DISCORD_BOT_TOKEN` | **Tooling only** — used solely by `scripts/register-command.ts`. Not required by the runtime worker. |
+| `DISCORD_BOT_TOKEN` | Runtime Discord REST authorization for publishing and deleting tracked invitations; also used by `scripts/register-command.ts`. |
 
 Copy `apps/discord/.dev.vars.example` → `.dev.vars` for `wrangler dev`.
 
@@ -288,6 +294,12 @@ wrangler secret put ROOM_CREATE_SECRET
 wrangler secret put DISCORD_BOT_TOKEN        # optional; only for the register script
 cd ../..
 
+# Create the persistent invitation store once, then put its id in
+# apps/discord/wrangler.toml as INVITATION_TRACKING.
+cd apps/discord
+wrangler kv namespace create INVITATION_TRACKING
+cd ../..
+
 # Set non-secret vars in apps/discord/wrangler.toml [vars] or as secrets:
 #   DISCORD_PUBLIC_KEY, DISCORD_APPLICATION_ID, COMMANDER_LINK_API_URL
 
@@ -296,6 +308,8 @@ cd ../..
 
 # Deploy
 pnpm deploy:discord    # = wrangler deploy (worker: commander-link-discord)
+
+# The Worker runs invitation cleanup automatically every five minutes.
 
 # Then point the Interactions Endpoint at
 #   https://commander-link-discord.<account>.workers.dev/interactions

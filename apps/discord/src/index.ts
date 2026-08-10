@@ -1,6 +1,6 @@
 import { readConfig, verifyDiscordRequest, handleInteraction, roomCreatedResponse } from "./discord";
 import { createCommanderRoom, CommanderLinkError } from "./commander-link";
-import { shareRoom, ShareError } from "./share";
+import { cleanupExpiredInvitations, shareRoom, ShareError } from "./share";
 
 export interface Env {
   DISCORD_PUBLIC_KEY: string;
@@ -9,6 +9,7 @@ export interface Env {
   ROOM_CREATE_SECRET: string;
   DISCORD_BOT_TOKEN?: string;
   COMMANDER_LINK_WEB_URL?: string;
+  INVITATION_TRACKING: KVNamespace;
 }
 
 const EPHEMERAL = 1 << 6;
@@ -69,6 +70,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
         commanderChannelId: channelId,
         discordBotToken: env.DISCORD_BOT_TOKEN,
         commanderLinkWebUrl: env.COMMANDER_LINK_WEB_URL,
+        invitationTracking: env.INVITATION_TRACKING,
       });
       return json(200, {
         type: 4,
@@ -130,5 +132,12 @@ export default {
     }
 
     return json(404, { error: "not_found" });
+  },
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    await cleanupExpiredInvitations({
+      commanderLinkApiUrl: env.COMMANDER_LINK_API_URL,
+      discordBotToken: env.DISCORD_BOT_TOKEN,
+      invitationTracking: env.INVITATION_TRACKING,
+    });
   },
 } satisfies ExportedHandler<Env>;
