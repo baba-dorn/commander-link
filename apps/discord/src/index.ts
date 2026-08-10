@@ -51,7 +51,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
     return json(400, { error: "bad_request" });
   }
 
-  const { decision, response, roomId, channelId } = handleInteraction(config, interaction);
+  const { decision, response, roomId, channelId, shareButtonEnabled } = handleInteraction(config, interaction);
 
   if (decision === "share") {
     const payload = interaction as { user?: { global_name?: string; username?: string } };
@@ -86,10 +86,11 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
       commanderLinkApiUrl: env.COMMANDER_LINK_API_URL,
       roomCreateSecret: env.ROOM_CREATE_SECRET,
     });
-    return json(
-      200,
-      roomCreatedResponse(room.inviteUrl, room.roomId, Boolean(channelId && env.DISCORD_BOT_TOKEN))
-    );
+    console.log("[discord] using roomCreatedResponse", {
+      roomId: room.roomId,
+      shareButtonEnabled: Boolean(shareButtonEnabled),
+    });
+    return json(200, roomCreatedResponse(room.inviteUrl, room.roomId, Boolean(shareButtonEnabled)));
   } catch (err) {
     // Never ship internal detail or credentials back to Discord.
     if (err instanceof CommanderLinkError) {

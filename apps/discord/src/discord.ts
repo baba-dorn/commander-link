@@ -162,7 +162,13 @@ function denyMessage(guildId: string | undefined): string {
 export function handleInteraction(
   config: DiscordConfig,
   interaction: unknown
-): { decision: "pong" | "create" | "share" | "deny" | "unknown"; response: DiscordResponse; roomId?: string; channelId?: string } {
+): {
+  decision: "pong" | "create" | "share" | "deny" | "unknown";
+  response: DiscordResponse;
+  roomId?: string;
+  channelId?: string;
+  shareButtonEnabled?: boolean;
+} {
   const ping = interaction as InteractionPing;
   if (ping && ping.type === PING_TYPE) {
     return { decision: "pong", response: { type: 1 } };
@@ -177,7 +183,7 @@ export function handleInteraction(
     if (!roomId || !guild || !Array.isArray(roles) || !roles.includes(guild.commanderRoleId)) {
       return { decision: "deny", response: { type: 4, data: { content: "Diese Teilen-Aktion ist nicht gültig oder nicht erlaubt.", flags: EPHEMERAL } } };
     }
-    return { decision: "share", roomId, channelId: guild.commanderChannelId, response: { type: 4, data: { flags: EPHEMERAL } } };
+    return { decision: "share", roomId, channelId: guild.commanderChannelId, shareButtonEnabled: Boolean(guild.commanderChannelId), response: { type: 4, data: { flags: EPHEMERAL } } };
   }
   if (!cmd || cmd.type !== APPLICATION_COMMAND_TYPE || !cmd.data || cmd.data.name !== "commander") {
     // Unknown / unsupported interaction: fail safely and predictably.
@@ -207,7 +213,15 @@ export function handleInteraction(
     };
   }
 
-  return { decision: "create", channelId: guild.commanderChannelId, response: { type: 4, data: { flags: EPHEMERAL } } as DiscordResponse };
+  const shareButtonEnabled = Boolean(guild.commanderChannelId);
+  console.log("[discord] guild config resolved", {
+    guildId: cmd.guild_id,
+    guildName: guild.name,
+    enabled: guild.enabled,
+    hasCommanderChannel: shareButtonEnabled,
+    shareButtonEnabled,
+  });
+  return { decision: "create", channelId: guild.commanderChannelId, shareButtonEnabled, response: { type: 4, data: { flags: EPHEMERAL } } as DiscordResponse };
 }
 
 /**

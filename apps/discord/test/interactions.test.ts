@@ -107,6 +107,7 @@ function mockApiFetch(status = 200, body: unknown = {}) {
 describe("guild-config lookup", () => {
   it("returns the enabled guild for a configured, enabled guild", () => {
     expect(getGuildConfig(GUILD_A)?.commanderRoleId).toBe(ROLE_A);
+    expect(getGuildConfig(GUILD_A)?.commanderChannelId).toBe("1535955936269570048");
     expect(getGuildConfig(GUILD_B)?.commanderRoleId).toBe(ROLE_B);
   });
 
@@ -415,9 +416,17 @@ describe("handleInteractions room creation", () => {
 describe("validateGuildConfig", () => {
   it("accepts a valid multi-guild config", () => {
     const config = validateGuildConfig({
-      guilds: { [GUILD_A]: { name: "A", commanderRoleId: ROLE_A, enabled: true } },
+      guilds: {
+        [GUILD_A]: {
+          name: "A",
+          commanderRoleId: ROLE_A,
+          commanderChannelId: "1535955936269570048",
+          enabled: true,
+        },
+      },
     });
     expect(config.guilds[GUILD_A].commanderRoleId).toBe(ROLE_A);
+    expect(config.guilds[GUILD_A].commanderChannelId).toBe("1535955936269570048");
   });
 
   it("rejects a malformed config (empty role)", () => {
@@ -484,5 +493,25 @@ describe("roomCreatedResponse", () => {
     expect(components[0].components[1].url).toBe(appLauncherUrl);
     expect(components[0].components[2].label).toBe("An Commander senden");
     expect(components[0].components[2].custom_id).toContain(roomId);
+  });
+
+  it("shows the share button only when the current guild has a channel", () => {
+    const roomId = "bb63eaf988d4415e8f23413c4eeb566";
+    const inviteUrl = `https://commander-link.joinoops.win/r/${roomId}`;
+    const withChannel = roomCreatedResponse(inviteUrl, roomId, true) as {
+      data: { components: Array<{ components: Array<{ label: string }> }> };
+    };
+    const withoutChannel = roomCreatedResponse(inviteUrl, roomId, false) as {
+      data: { components: Array<{ components: Array<{ label: string }> }> };
+    };
+    expect(withChannel.data.components[0].components.map((button) => button.label)).toEqual([
+      "Im Browser öffnen",
+      "In der App öffnen",
+      "An Commander senden",
+    ]);
+    expect(withoutChannel.data.components[0].components.map((button) => button.label)).toEqual([
+      "Im Browser öffnen",
+      "In der App öffnen",
+    ]);
   });
 });
