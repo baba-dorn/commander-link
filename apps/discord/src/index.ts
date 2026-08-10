@@ -1,11 +1,15 @@
 import { readConfig, verifyDiscordRequest, handleInteraction, roomCreatedResponse } from "./discord";
 import { createCommanderRoom, CommanderLinkError } from "./commander-link";
+import { shareRoom, ShareError } from "./share";
 
 export interface Env {
   DISCORD_PUBLIC_KEY: string;
   DISCORD_APPLICATION_ID: string;
   COMMANDER_LINK_API_URL: string;
   ROOM_CREATE_SECRET: string;
+  COMMANDER_CHANNEL_ID?: string;
+  DISCORD_BOT_TOKEN?: string;
+  COMMANDER_LINK_WEB_URL?: string;
 }
 
 const EPHEMERAL = 1 << 6;
@@ -48,7 +52,31 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
     return json(400, { error: "bad_request" });
   }
 
-  const { decision, response } = handleInteraction(config, interaction);
+  const { decision, response, roomId } = handleInteraction(config, interaction);
+
+  if (decision === "share") {
+    const payload = interaction as { user?: { global_name?: string; username?: string } };
+    try {
+      if (!roomId) throw new ShareError("invalid_room");
+      await shareRoom(roomId, payload.user?.global_name ?? payload.user?.username, {
+        commanderLinkApiUrl: env.COMMANDER_LINK_API_URL,
+        commanderChannelId: env.COMMANDER_CHANNEL_ID,
+        discordBotToken: env.DISCORD_BOT_TOKEN,
+        commanderLinkWebUrl: env.COMMANDER_LINK_WEB_URL,
+      });
+      return json(200, {
+        type: 4,
+        data: { content: "✅ Raum wurde an die Commander gesendet.", flags: EPHEMERAL },
+      });
+    } catch (err) {
+      if (err instanceof ShareError) console.error(`commander-room share failed reason=${err.message}`);
+      else console.error("commander-room share failed unexpected");
+      return json(200, {
+        type: 4,
+        data: { content: "Der Commander-Kanal konnte nicht erreicht werden.", flags: EPHEMERAL },
+      });
+    }
+  }
 
   if (decision !== "create") {
     return json(200, response);
@@ -59,7 +87,10 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
       commanderLinkApiUrl: env.COMMANDER_LINK_API_URL,
       roomCreateSecret: env.ROOM_CREATE_SECRET,
     });
-    return json(200, roomCreatedResponse(room.inviteUrl, room.roomId));
+    return json(
+      200,
+      roomCreatedResponse(room.inviteUrl, room.roomId, Boolean(env.COMMANDER_CHANNEL_ID && env.DISCORD_BOT_TOKEN))
+    );
   } catch (err) {
     // Never ship internal detail or credentials back to Discord.
     if (err instanceof CommanderLinkError) {
@@ -70,6 +101,7 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
     return json(200, { type: 4, data: { content: DENIED_MESSAGE, flags: EPHEMERAL } });
   }
 }
+
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

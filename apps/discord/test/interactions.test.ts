@@ -471,16 +471,18 @@ describe("roomCreatedResponse", () => {
     expect(data.data.flags).toBe(1 << 6); // ephemeral
     expect(data.data.components).toBeTruthy();
     
-    // Verify button structure has two buttons
+    // Verify browser, app and explicit share actions
     const components = data.data.components as Array<{
       type: number;
-      components: Array<{ type: number; style: number; label: string; url: string }>;
+      components: Array<{ type: number; style: number; label: string; url?: string; custom_id?: string }>;
     }>;
     expect(components).toHaveLength(1);
-    expect(components[0].components).toHaveLength(2);
+    expect(components[0].components).toHaveLength(3);
     expect(components[0].components[0].label).toBe("Im Browser öffnen");
     expect(components[0].components[0].url).toBe(inviteUrl);
     expect(components[0].components[1].label).toBe("In der App öffnen");
     expect(components[0].components[1].url).toBe(appLauncherUrl);
+    expect(components[0].components[2].label).toBe("An Commander senden");
+    expect(components[0].components[2].custom_id).toContain(roomId);
   });
 });

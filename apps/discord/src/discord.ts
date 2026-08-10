@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getGuildConfig, isGuildDisabled } from "./guild-config";
+import { RoomIdSchema } from "@commander-link/core";
 
 /**
  * Discord HTTP Interactions handling for Commander Link.
@@ -16,6 +17,7 @@ export interface DiscordConfig {
   publicKey: string;
   /** Discord Application ID (safe identifier). */
   applicationId: string;
+  commanderChannelId?: string;
 }
 
 const DiscordConfigSchema = z.object({
@@ -28,6 +30,7 @@ export function readConfig(env: Record<string, string | undefined>): DiscordConf
   const parsed = DiscordConfigSchema.safeParse({
     publicKey: env.DISCORD_PUBLIC_KEY,
     applicationId: env.DISCORD_APPLICATION_ID,
+    commanderChannelId: env.COMMANDER_CHANNEL_ID || undefined,
   });
   if (!parsed.success) {
     throw new Error("missing or invalid Discord configuration");
@@ -87,6 +90,7 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
 
 const PING_TYPE = 1; // Discord validates the endpoint: receive PING, return PONG.
 const APPLICATION_COMMAND_TYPE = 2;
+const MESSAGE_COMPONENT_TYPE = 3;
 
 interface InteractionPing {
   type: 1;
@@ -101,6 +105,13 @@ interface InteractionCommand {
   };
 }
 
+interface InteractionComponent {
+  type: 3;
+  guild_id?: string;
+  member?: { roles?: string[] };
+  data?: { custom_id?: string };
+}
+
 // ---------------------------------------------------------------------------
 // Authorization chain
 // ---------------------------------------------------------------------------
@@ -108,7 +119,7 @@ interface InteractionCommand {
 export type DiscordResponse =
   | { type: 1 } // PONG
   | {
-      type: 4;
+      type: 4 | 7;
       data: {
         content?: string;
         flags?: number;
@@ -125,6 +136,18 @@ const DISABLED_GUILD_MESSAGE =
 const NO_ROLE_MESSAGE =
   "Du benötigst die konfigurierte Kommandeur-Rolle, um einen Commander-Link-Raum zu erstellen.";
 const FAILED_MESSAGE = "Der Commander-Link-Raum konnte gerade nicht erstellt werden.";
+export const SHARE_CUSTOM_ID_PREFIX = "commander-link:share:";
+export const SHARE_LABEL = "An Commander senden";
+
+export function shareCustomId(roomId: string): string {
+  return `${SHARE_CUSTOM_ID_PREFIX}${roomId}`;
+}
+
+export function roomIdFromShareCustomId(customId: string | undefined): string | null {
+  if (!customId?.startsWith(SHARE_CUSTOM_ID_PREFIX)) return null;
+  const roomId = customId.slice(SHARE_CUSTOM_ID_PREFIX.length);
+  return RoomIdSchema.safeParse(roomId).success ? roomId : null;
+}
 
 function denyMessage(guildId: string | undefined): string {
   if (isGuildDisabled(guildId)) {
@@ -141,13 +164,23 @@ function denyMessage(guildId: string | undefined): string {
 export function handleInteraction(
   config: DiscordConfig,
   interaction: unknown
-): { decision: "pong" | "create" | "deny" | "unknown"; response: DiscordResponse } {
+): { decision: "pong" | "create" | "share" | "deny" | "unknown"; response: DiscordResponse; roomId?: string } {
   const ping = interaction as InteractionPing;
   if (ping && ping.type === PING_TYPE) {
     return { decision: "pong", response: { type: 1 } };
   }
 
   const cmd = interaction as InteractionCommand;
+  const component = interaction as InteractionComponent;
+  if (component?.type === MESSAGE_COMPONENT_TYPE) {
+    const roomId = roomIdFromShareCustomId(component.data?.custom_id);
+    const guild = getGuildConfig(component.guild_id);
+    const roles = component.member?.roles ?? [];
+    if (!roomId || !guild || !Array.isArray(roles) || !roles.includes(guild.commanderRoleId)) {
+      return { decision: "deny", response: { type: 4, data: { content: "Diese Teilen-Aktion ist nicht gültig oder nicht erlaubt.", flags: EPHEMERAL } } };
+    }
+    return { decision: "share", roomId, response: { type: 4, data: { flags: EPHEMERAL } } };
+  }
   if (!cmd || cmd.type !== APPLICATION_COMMAND_TYPE || !cmd.data || cmd.data.name !== "commander") {
     // Unknown / unsupported interaction: fail safely and predictably.
     return {
@@ -185,7 +218,7 @@ export function handleInteraction(
  * launcher that attempts to open the installed desktop application.
  * Both must be reachable from the invite URL.
  */
-export function roomCreatedResponse(inviteUrl: string, roomId: string): DiscordResponse {
+export function roomCreatedResponse(inviteUrl: string, roomId: string, sharingAvailable = true): DiscordResponse {
   const appLauncherUrl = inviteUrl.replace(/\/r\/([^/]+)$/, "/app/$1");
   
   return {
@@ -199,6 +232,9 @@ export function roomCreatedResponse(inviteUrl: string, roomId: string): DiscordR
           components: [
             { type: 2, style: 5, label: "Im Browser öffnen", url: inviteUrl },
             { type: 2, style: 5, label: "In der App öffnen", url: appLauncherUrl },
+            ...(sharingAvailable
+              ? [{ type: 2, style: 1, label: SHARE_LABEL, custom_id: shareCustomId(roomId) }]
+              : []),
           ],
         },
       ],

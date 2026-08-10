@@ -20,3 +20,6 @@ DISCORD_APPLICATION_ID=replace-me
 
 # Commander Link API (worker) base URL.
 COMMANDER_LINK_API_URL=http://localhost:8788
+COMMANDER_LINK_WEB_URL=http://localhost:5173
+# Shared invitations are posted here. Leave empty to disable sharing.
+COMMANDER_CHANNEL_ID=

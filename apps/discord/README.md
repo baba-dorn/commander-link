@@ -59,6 +59,17 @@ behavior are unchanged.
 
 ---
 
+## Sharing a room
+
+`/commander` remains an ephemeral private response. With
+`COMMANDER_CHANNEL_ID` and `DISCORD_BOT_TOKEN` configured, it also contains
+**An Commander senden**. An authorized Commander can publish the existing room
+invitation to that channel; sharing never creates a second room. Discord channel
+permissions determine who can see the invitation.
+
+The application needs **View Channel**, **Send Messages**, and **Embed Links**
+in the configured channel. Administrator permission is not required.
+
 ## Configuration
 
 ### Guild configuration (`apps/discord/config/guilds.json`)
@@ -116,11 +127,17 @@ file is bundled into the Worker: edit it, then run `pnpm deploy:discord`.
 | `DISCORD_PUBLIC_KEY` | Hex Ed25519 public key from the Developer Portal. Used to verify interaction signatures. |
 | `DISCORD_APPLICATION_ID` | Discord Application ID. |
 | `COMMANDER_LINK_API_URL` | Base URL of the Commander Link API Worker (e.g. `https://commander-link-api.<account>.workers.dev`). |
+| `COMMANDER_CHANNEL_ID` | Discord channel ID receiving explicitly shared invitations; omit to disable sharing. |
+| `COMMANDER_LINK_WEB_URL` | Public web origin used for shared browser and app links. |
 
 `DISCORD_GUILD_ID` and `DISCORD_COMMANDER_ROLE_ID` are **no longer used** — per-guild
 authorization now comes from `config/guilds.json`.
 
 ### Secrets (never commit; never returned to clients)
+
+`DISCORD_BOT_TOKEN` is required at runtime when invitation sharing is enabled;
+it is used only for the server-side Discord REST message call (and command
+registration) and is never sent to clients.
 
 | Variable | Purpose |
 | --- | --- |

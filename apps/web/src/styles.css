@@ -69,6 +69,7 @@ body::after {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   position: relative;
   z-index: 1;
 }
@@ -87,6 +88,7 @@ body::after {
 .join-gate,
 .home {
   min-height: 100vh;
+  min-height: 100dvh;
   justify-content: center;
   align-items: center;
 }
@@ -688,6 +690,7 @@ input[type="text"]:focus-visible {
 /* App launcher view */
 .shell.launcher {
   min-height: 100vh;
+  min-height: 100dvh;
   justify-content: center;
   align-items: center;
 }

@@ -21,6 +21,7 @@ import {
   WINDOWS_DOWNLOAD_URL,
 } from "./desktop";
 import type { SpeakerLevel } from "./audio-level";
+import { PttGesture } from "./ptt";
 import type { TransportDiagnostics, TransportDiagnosticsPeer } from "./transport";
 import { formatDiagnosticsReport, setWebrtcLogEnabled, type LogEvent } from "./webrtc-log";
 
@@ -556,6 +557,7 @@ function JoinView({ roomId }: { roomId: string }) {
       window.removeEventListener("pagehide", onUnload);
       const session = sessionRef.current;
       if (session) void leaveRoom(roomId, session.admissionId).catch(() => {});
+      controllerRef.current?.release();
       void connectionRef.current?.disconnect();
     };
   }, [joined, roomId]);
@@ -576,17 +578,19 @@ function JoinView({ roomId }: { roomId: string }) {
     return speakerLevels.reduce((max, s) => (s.speaking ? Math.max(max, s.level) : max), 0);
   }, [speakerLevels]);
 
-  // Global fail-closed events + desktop global PTT.
+  // Global fail-closed events + desktop global PTT. Every ambiguity path —
+  // window blur, page hidden, pagehide — maps to a fail-closed mute; the shared
+  // PttController treats repeated releases as harmless no-ops.
   useEffect(() => {
     if (!joined) return;
     const controller = controllerRef.current;
     if (!controller) return;
 
-    const onBlur = () => controller.blur();
+    const onBlur = () => controller.release();
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") controller.hidden();
+      if (document.visibilityState === "hidden") controller.release();
     };
-    const onPageHide = () => controller.hidden();
+    const onPageHide = () => controller.release();
     window.addEventListener("blur", onBlur);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", onPageHide);
@@ -596,6 +600,7 @@ function JoinView({ roomId }: { roomId: string }) {
     const offUp = bridge?.onPttUp(() => controller.release());
 
     return () => {
+      controller.release();
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", onPageHide);
@@ -759,7 +764,45 @@ function PttButton({
   onRelease: () => void;
 }) {
   const ref = useRef<HTMLButtonElement | null>(null);
+  const gestureRef = useRef<PttGesture | null>(null);
+  const onPressRef = useRef(onPress);
+  const onReleaseRef = useRef(onRelease);
   const scale = active ? 1 + (speakerLevel / 100) * 0.15 : 1;
+
+  // Keep the gesture callbacks current without re-creating the gesture (and
+  // without spuriously releasing PTT) on every re-render.
+  useEffect(() => {
+    onPressRef.current = onPress;
+    onReleaseRef.current = onRelease;
+  });
+
+  useEffect(() => {
+    const gesture = new PttGesture({
+      getElement: () => ref.current,
+      onPress: () => onPressRef.current(),
+      onRelease: () => onReleaseRef.current(),
+    });
+    gestureRef.current = gesture;
+    const unbindGlobal = gesture.bindGlobalListeners({
+      window: {
+        addEventListener: (type, listener) => window.addEventListener(type, listener),
+        removeEventListener: (type, listener) => window.removeEventListener(type, listener),
+      },
+      document: {
+        visibilityState: () => document.visibilityState,
+        addEventListener: (type, listener) =>
+          document.addEventListener(type, listener),
+        removeEventListener: (type, listener) =>
+          document.removeEventListener(type, listener),
+      },
+    });
+    return () => {
+      gesture.stopTalking();
+      unbindGlobal();
+      gestureRef.current = null;
+    };
+  }, []);
+
   return (
     <button
       ref={ref}
@@ -767,13 +810,11 @@ function PttButton({
       style={{ "--speaker-scale": scale } as React.CSSProperties}
       aria-pressed={own}
       aria-label="Push-to-talk: gedrückt halten zum Sprechen"
-      onPointerDown={(e) => {
-        ref.current?.setPointerCapture(e.pointerId);
-        onPress();
-      }}
-      onPointerUp={onRelease}
-      onPointerCancel={onRelease}
-      onPointerLeave={onRelease}
+      onPointerDown={(e) => gestureRef.current?.handlePointerDown(e)}
+      onPointerUp={(e) => gestureRef.current?.handlePointerUp(e)}
+      onPointerCancel={(e) => gestureRef.current?.handlePointerCancel(e)}
+      onLostPointerCapture={(e) => gestureRef.current?.handleLostPointerCapture(e)}
+      onPointerLeave={(e) => gestureRef.current?.handlePointerLeave(e)}
       onContextMenu={(e) => e.preventDefault()}
     >
       <span className="ptt-main">{main}</span>
