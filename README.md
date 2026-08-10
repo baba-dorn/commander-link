@@ -22,11 +22,11 @@ Electron + React client -/
                                    |
                                    v
                      @metered-ca/realtime (MeteredPeer)
-                     signalling + presence + TURN metadata
+                     signalling + presence + ICE metadata
                                    |
                                    v
                      WebRTC audio-only P2P mesh (max. 4 peers)
-                     TURN relay only as fallback
+                     STUN for NAT traversal, TURN relay only as fallback
 ```
 
 Cloudflare does **not** implement WebRTC signalling. The Durable Object only
@@ -36,6 +36,67 @@ client renders against a provider-independent `VoiceTransport` interface;
 
 Every Commander Link room maps deterministically to a Realtime channel:
 `commander-link/<room-id>`. Tokens are scoped to exactly that one channel.
+
+### ICE configuration / TURN
+
+Metered Realtime currently delivers **no** ICE configuration (verified:
+`metadata.iceServers` is empty — `TURN configuration received: NO`). Because
+`@metered-ca/realtime` creates every `RTCPeerConnection` internally, the client
+injects an explicit **Open Relay fallback** at the SDK's
+`rtcPeerConnectionFactory` — the single point every internal PC creation passes
+through (new peers and reconnect PC swaps):
+
+```
+Metered welcome iceServers
+    ↓
+if non-empty → use them (unchanged)
+otherwise    → Open Relay fallback (stun/turn/turns at staticauth.openrelay.metered.ca)
+```
+
+Production default is `iceTransportPolicy: "all"` (direct P2P preferred, TURN
+only as fallback). A debug-only `?debug=webrtc&forceRelay=1` forces
+`iceTransportPolicy: "relay"` for diagnostics. The Open Relay credentials are
+Metered's public test credentials and are never shown verbatim in the
+diagnostics report (only scheme/hostname/port).
+
+### Using your own STUN/TURN servers
+
+Replace the Open Relay fallback with your own STUN/TURN servers. Two ways:
+
+1. **Public test credentials only** — edit `OPEN_RELAY_ICE_SERVERS` in
+   `apps/web/src/ice-fallback.ts`. This list ships in the browser bundle, so
+   only use it for credentials that are safe to expose.
+
+2. **Private TURN servers (recommended)** — add `metadata.iceServers` to the
+   minted Realtime JWT in `apps/worker/src/voice/metered.ts` (the
+   `POST /v1/tokens` request body). Metered passes that metadata through in the
+   welcome frame, and the client uses it automatically — the Open Relay
+   fallback only applies when `iceServers` is absent. Credentials stay in
+   Worker secrets (`wrangler secret put TURN_USERNAME` /
+   `TURN_PASSWORD`), never in the client or the bundle:
+
+```ts
+// apps/worker/src/voice/metered.ts — token mint body
+body: JSON.stringify({
+  peerId,
+  channels: [channel],
+  permissions: ["publish", "subscribe", "presence", "send"],
+  expiresInSec: this.config.tokenTtlSeconds,
+  peerMetadata: { username: displayName },
+  metadata: {
+    iceServers: [
+      { urls: "stun:stun.example.com:3478" },
+      {
+        urls: "turn:turn.example.com:3478?transport=udp",
+        username: env.TURN_USERNAME,   // Wrangler secret
+        credential: env.TURN_PASSWORD, // Wrangler secret
+      },
+    ],
+  },
+}),
+```
+
+The client prefers these servers and the Open Relay fallback is skipped.
 
 ## Security invariants
 
@@ -73,7 +134,8 @@ Every Commander Link room maps deterministically to a Realtime channel:
    the desktop app.
 4. Electron receives a deep link such as `commanderlink://join/<room-id>`.
 5. Each client asks the Worker for a scoped Realtime JWT.
-6. `MeteredPeer` joins the room's channel, connects peers P2P and auto-injects TURN.
+6. `MeteredPeer` joins the room's channel, connects peers P2P and applies the
+   Open Relay fallback ICE config when Metered supplies none.
 7. Everyone starts muted.
 8. Hold F8 (desktop) or hold the red button (browser) to transmit.
 9. Release means mute immediately.
@@ -88,7 +150,7 @@ This repository intentionally contains the architecture, contracts, scaffolding 
 
 ## Running locally
 
-Prerequisites: Node.js 22+, pnpm 10, and a Metered account with **Realtime Messaging** enabled (a `sk_id` + `sk_secret` key pair from Dashboard → Realtime Messaging → Keys, and a TURN service active for TURN fallback).
+Prerequisites: Node.js 22+, pnpm 10, and a Metered account with **Realtime Messaging** enabled (a `sk_id` + `sk_secret` key pair from Dashboard → Realtime Messaging → Keys). Cross-network audio uses the built-in Open Relay STUN/TURN fallback, so no separate TURN service is required for the MVP.
 
 ```powershell
 # 1. Install
@@ -157,14 +219,16 @@ Discord server" for the full workflow and disabling a server (`"enabled": false`
 
 ## Deployment
 
-- **Worker/API:** `cd apps/worker && wrangler deploy`. Set
+Run the deploy scripts from the repo root (each targets the right app directory):
+
+- **Worker/API:** `pnpm deploy:worker` (or `cd apps/worker && wrangler deploy`). Set
   `METERED_REALTIME_KEY_ID`, `METERED_REALTIME_SECRET` and `ROOM_CREATE_SECRET` via
   `wrangler secret put`, and `APP_ORIGIN` in `wrangler.toml`. `ROOM_CREATE_SECRET`
   must match the value configured on the Discord worker so the Discord-authorized
   room-creation flow works.
-- **Web:** `pnpm --filter @commander-link/web build` → deploy `apps/web/dist` to any static host.
-  A SPA fallback (`/* → /index.html`) is required so `/r/<room-id>` resolves; a Cloudflare Pages
-  `_redirects` file is included.
+- **Web:** `pnpm deploy:web` builds `apps/web` and deploys it as the static-assets
+  Worker `commander-link` (served via the custom domain). A SPA fallback
+  (`/* → /index.html`) is configured so `/r/<room-id>` resolves.
 - **Desktop:** `pnpm --filter @commander-link/desktop build`, then package with your Electron
   packager. The app registers the `commanderlink://` protocol on Windows/Linux.
 - **Discord:** `pnpm deploy:discord` (worker `commander-link-discord`) bundles the current

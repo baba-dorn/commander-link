@@ -52,11 +52,11 @@ Electron + React-Client -/
                                     |
                                     v
                        @metered-ca/realtime (MeteredPeer)
-                       Signalisierung + Anwesenheit + TURN-Metadaten
+                       Signalisierung + Anwesenheit + ICE-Metadaten
                                     |
                                     v
                        WebRTC Audio-P2P-Netz (max. 4 Teilnehmer)
-                       TURN-Relay nur als Fallback
+                       STUN für NAT-Traversal, TURN-Relay nur als Fallback
 ```
 
 In einfachen Worten:
@@ -64,6 +64,50 @@ In einfachen Worten:
 - Der **Cloudflare Worker** verwaltet nur Raum-Erstellung, Ablauf, das 4-Teilnehmer-Limit und die Vergabe von **kurzlebigen Zugangs-Tickets (JWTs)**.
 - Die eigentliche **Verbindung** (Audio zwischen den Teilnehmern) läuft direkt über **WebRTC** von Browser zu Browser – „Peer to Peer". Cloudflare leitet dabei **keine** Medien (Audio/Video) weiter.
 - Jeder Commander-Link-Raum ist eindeutig mit einem Realtime-Kanal verknüpft: `commander-link/<raum-id>`. Zugangstickets gelten **nur** für genau diesen einen Kanal.
+
+### ICE-Konfiguration / TURN
+
+Metered Realtime liefert aktuell **keine** ICE-Konfiguration (verifiziert: `metadata.iceServers` ist leer — `TURN configuration received: NO`). Da `@metered-ca/realtime` jede `RTCPeerConnection` intern erzeugt, injiziert der Client einen expliziten **Open-Relay-Fallback** über die `rtcPeerConnectionFactory` des SDK — den einzigen Punkt, durch den jede interne PC-Erstellung läuft (neue Peers und Reconnect-PC-Swaps):
+
+```
+Metered-Welcome-iceServers
+    ↓
+falls nicht leer → nutzen (unverändert)
+sonst            → Open-Relay-Fallback (stun/turn/turns auf staticauth.openrelay.metered.ca)
+```
+
+Der Produktions-Standard ist `iceTransportPolicy: "all"` (direktes P2P bevorzugt, TURN nur als Fallback). Nur für Diagnose: `?debug=webrtc&forceRelay=1` erzwingt `iceTransportPolicy: "relay"`. Die Open-Relay-Zugangsdaten sind die öffentlichen Metered-Test-Zugangsdaten und werden in den Diagnose-Reports nie im Klartext angezeigt (nur scheme/hostname/port).
+
+### Eigene STUN/TURN-Server verwenden
+
+Den Open-Relay-Fallback durch eigene STUN/TURN-Server ersetzen. Es gibt zwei Wege:
+
+1. **Nur öffentliche Test-Zugangsdaten** — `OPEN_RELAY_ICE_SERVERS` in `apps/web/src/ice-fallback.ts` bearbeiten. Diese Liste landet im Browser-Bundle, also nur für Zugangsdaten verwenden, die öffentlich sein dürfen.
+
+2. **Private TURN-Server (empfohlen)** — `metadata.iceServers` in den geminteten Realtime-JWT in `apps/worker/src/voice/metered.ts` aufnehmen (Body des `POST /v1/tokens`-Requests). Metered reicht diese Metadaten im Welcome-Frame durch, und der Client nutzt sie automatisch — der Open-Relay-Fallback greift nur, wenn `iceServers` fehlt. Die Zugangsdaten bleiben in den Worker-Geheimnissen (`wrangler secret put TURN_USERNAME` / `TURN_PASSWORD`), nie im Client oder im Bundle:
+
+```ts
+// apps/worker/src/voice/metered.ts — Token-Mint-Body
+body: JSON.stringify({
+  peerId,
+  channels: [channel],
+  permissions: ["publish", "subscribe", "presence", "send"],
+  expiresInSec: this.config.tokenTtlSeconds,
+  peerMetadata: { username: displayName },
+  metadata: {
+    iceServers: [
+      { urls: "stun:stun.example.com:3478" },
+      {
+        urls: "turn:turn.example.com:3478?transport=udp",
+        username: env.TURN_USERNAME,   // Wrangler-Geheimnis
+        credential: env.TURN_PASSWORD, // Wrangler-Geheimnis
+      },
+    ],
+  },
+}),
+```
+
+Der Client bevorzugt diese Server; der Open-Relay-Fallback wird übersprungen.
 
 ---
 
@@ -106,7 +150,7 @@ So nutzt ihr Commander Link:
 3. Andere Kommandanten öffnen denselben Link im Browser – oder wählen **„Im Desktop-Programm öffnen"**.
 4. Electron empfängt einen Link wie `commanderlink://join/<raum-id>`.
 5. Jeder Client holt sich beim Worker ein begrenztes Realtime-JWT.
-6. `MeteredPeer` tritt dem Raum-Kanal bei, verbindet Teilnehmer direkt (P2P) und stellt automatisch TURN als Fallback bereit.
+6. `MeteredPeer` tritt dem Raum-Kanal bei, verbindet Teilnehmer direkt (P2P) und wendet die Open-Relay-Fallback-ICE-Konfiguration an, wenn Metered keine liefert.
 7. **Alle betreten den Raum stumm.**
 8. **F8 halten** (Desktop) oder **roten Button halten** (Browser) = sprechen.
 9. **Loslassen = sofort stumm.**
@@ -115,7 +159,7 @@ So nutzt ihr Commander Link:
 
 ## Lokale Entwicklung {#lokale-entwicklung}
 
-**Voraussetzungen:** Node.js 22+, pnpm 10 und ein Metered-Konto mit **Realtime Messaging**. Du brauchst ein Schlüsselpaar (`sk_id` + `sk_secret`) aus dem Dashboard (→ Realtime Messaging → Keys) und einen aktiven TURN-Dienst für den Fallback.
+**Voraussetzungen:** Node.js 22+, pnpm 10 und ein Metered-Konto mit **Realtime Messaging**. Du brauchst ein Schlüsselpaar (`sk_id` + `sk_secret`) aus dem Dashboard (→ Realtime Messaging → Keys). Für Audio über verschiedene Netze ist kein separater TURN-Dienst nötig — der eingebaute Open-Relay-STUN/TURN-Fallback deckt das MVP ab.
 
 ```powershell
 # 1. Abhängigkeiten installieren
@@ -201,8 +245,10 @@ Details findest du in `apps/discord/README.md`.
 
 ## Bereitstellung {#bereitstellung}
 
-- **Worker/API:** `cd apps/worker && wrangler deploy`. `METERED_REALTIME_KEY_ID` und `METERED_REALTIME_SECRET` per `wrangler secret put` setzen, `APP_ORIGIN` in `wrangler.toml`.
-- **Web:** `pnpm --filter @commander-link/web build` → `apps/web/dist` auf einem statischen Hoster ablegen. Ein SPA-Fallback (`/* → /index.html`) ist nötig, damit `/r/<raum-id>` funktioniert; eine Cloudflare-Pages-`_redirects`-Datei liegt bei.
+Die Deploy-Skripte laufen vom Repo-Root aus (jedes zielt auf das richtige App-Verzeichnis):
+
+- **Worker/API:** `pnpm deploy:worker` (oder `cd apps/worker && wrangler deploy`). `METERED_REALTIME_KEY_ID` und `METERED_REALTIME_SECRET` per `wrangler secret put` setzen, `APP_ORIGIN` in `wrangler.toml`.
+- **Web:** `pnpm deploy:web` baut `apps/web` und stellt es als Static-Assets-Worker `commander-link` bereit (ausgeliefert über die Custom-Domain). Ein SPA-Fallback (`/* → /index.html`) ist konfiguriert, damit `/r/<raum-id>` funktioniert.
 - **Desktop:** `pnpm --filter @commander-link/desktop build`, dann mit deinem Electron-Packager paketieren. Die App registriert unter Windows/Linux das `commanderlink://`-Protokoll.
 - **Discord:** `pnpm deploy:discord` bündelt die aktuelle `apps/discord/config/guilds.json` in den Worker. Für einen **neuen** Server diesen dort ergänzen, bereitstellen und zusätzlich `pnpm register:discord:command` ausführen, damit `/commander` dort installiert wird. Als Wrangler-Geheimnis sind `ROOM_CREATE_SECRET` (und für das Registrier-Skript `DISCORD_BOT_TOKEN`) zu setzen.
 
