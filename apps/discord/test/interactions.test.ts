@@ -107,7 +107,7 @@ function mockApiFetch(status = 200, body: unknown = {}) {
 describe("guild-config lookup", () => {
   it("returns the enabled guild for a configured, enabled guild", () => {
     expect(getGuildConfig(GUILD_A)?.commanderRoleId).toBe(ROLE_A);
-    expect(getGuildConfig(GUILD_A)?.commanderChannelId).toBe("1535955936269570048");
+    expect(getGuildConfig(GUILD_A)?.commanderChannelId).toBe("123456789012345678");
     expect(getGuildConfig(GUILD_B)?.commanderRoleId).toBe(ROLE_B);
   });
 
