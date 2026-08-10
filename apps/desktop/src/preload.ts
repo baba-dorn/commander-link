@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { PttBinding, PttSettings } from "../../../packages/core/src/index";
+import type { PttBinding, PttSettings } from "@commander-link/core" with { "resolution-mode": "import" };
 
 // Narrow, typed surface. The renderer gets no Node.js access — only these three
 // capabilities: global PTT key events, deep-link room routing and the initial room.

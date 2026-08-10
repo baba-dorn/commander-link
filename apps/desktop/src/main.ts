@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { uIOhook, UiohookKey, type UiohookKeyboardEvent, type UiohookMouseEvent } from "uiohook-napi";
-import type { PttBinding, PttSettings } from "../../../packages/core/src/index";
+import type { PttBinding, PttSettings } from "@commander-link/core" with { "resolution-mode": "import" };
 import { deepLinkFromArgv, roomFromDeepLink } from "./deep-link";
 
 const DEV_WEB_URL = "http://localhost:5173";
