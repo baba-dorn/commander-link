@@ -278,3 +278,31 @@ export class PttController {
     return this.dispatch("error");
   }
 }
+
+// ---------------------------------------------------------------------------
+// Desktop PTT bindings
+// ---------------------------------------------------------------------------
+
+export interface PttModifiers {
+  ctrl?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+  meta?: boolean;
+}
+
+export type PttBinding =
+  | { type: "keyboard"; keycode: number; label: string; modifiers?: PttModifiers }
+  | { type: "mouse"; button: number; label: string };
+
+export interface PttSettings {
+  primaryPttBinding: PttBinding | null;
+  secondaryPttBinding: PttBinding | null;
+  microphoneDevice: string;
+  audioOutputDevice: string;
+}
+
+export function pttBindingKey(binding: PttBinding): string {
+  if (binding.type === "mouse") return `mouse:${binding.button}`;
+  const modifiers = binding.modifiers ?? {};
+  return `keyboard:${binding.keycode}:${Boolean(modifiers.ctrl)}:${Boolean(modifiers.alt)}:${Boolean(modifiers.shift)}:${Boolean(modifiers.meta)}`;
+}

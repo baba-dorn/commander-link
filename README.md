@@ -8,7 +8,7 @@ It is **not** a Discord replacement and **not** a general-purpose voice platform
 
 - Discord stays open and carries the normal raid/squad communication.
 - Commander Link provides a second, private, audio-only WebRTC mesh for up to 4 commanders.
-- Desktop users can hold a global hotkey (default `F8`) to transmit while the game has focus.
+- Desktop users can hold a configurable global hotkey or auxiliary mouse button to transmit while the game has focus.
 - Browser users can hold a large on-screen push-to-talk button on a second display.
 - Releasing the key/button must mute immediately.
 - Browser and desktop clients join the same room via the same HTTPS invite URL.
@@ -137,7 +137,7 @@ The client prefers these servers and the Open Relay fallback is skipped.
 6. `MeteredPeer` joins the room's channel, connects peers P2P and applies the
    Open Relay fallback ICE config when Metered supplies none.
 7. Everyone starts muted.
-8. Hold F8 (desktop) or hold the red button (browser) to transmit.
+8. Hold the configured desktop binding or the red browser button to transmit.
 9. Release means mute immediately.
 
 Rooms are **only** created through Discord; the public website is a join/voice
@@ -166,7 +166,7 @@ cd ../..
 pnpm dev:worker    # http://localhost:8788
 pnpm dev:web       # http://localhost:5173
 
-# 4. Optional: run the desktop shell (loads the web app, adds global F8 + deep links)
+# 4. Optional: run the desktop shell (loads the web app, adds configurable global PTT + deep links)
 pnpm dev:desktop
 ```
 
@@ -241,7 +241,7 @@ Run the deploy scripts from the repo root (each targets the right app directory)
 - Primary invite is always HTTPS `/r/<room-id>` so a browser is a valid fallback.
 - The desktop app registers `commanderlink://join/<room-id>` and routes second launches into the
   existing window (single instance).
-- Global push-to-talk uses a native key hook (`uiohook-napi`) so **F8 hold/release works while the
+- Global push-to-talk uses a native key/mouse hook (`uiohook-napi`) so the configured hold/release binding works while the
   game or another app has focus** — something `globalShortcut` cannot do (no key-up event).
 
 ## Desktop App
@@ -306,7 +306,7 @@ Equivalent `--filter` forms: `pnpm --filter @commander-link/desktop dist:dir` /
 - Only `dist/**` (compiled main + preload) and runtime dependencies are packaged; source files are
   excluded. The renderer is **not** bundled — the app loads the hosted web app.
 - `uiohook-napi` ships prebuilt N-API binaries and is unpacked from asar (`asarUnpack`) so the
-  native module and global F8 keep working in the packaged app.
+  native module and global PTT keep working in the packaged app.
 - Icon: `apps/desktop/assets/icon.ico`. If absent, packaging falls back to the Electron default so a
   build is never blocked. Add a real icon before a public release.
 - Keep runtime deps in the desktop `dependencies`; `@commander-link/core` is type-only there and
@@ -327,7 +327,7 @@ Artifacts: `apps/desktop/release/` locally; the attached installer on the GitHub
 ## Steam Deck / Linux notes
 
 Global key capture under Wayland is restricted. On X11 (Steam Deck Desktop Mode / gaming mode via
-`uiohook`) F8 capture generally works; under strict Wayland compositors it may not. The browser
+`uiohook`) keyboard and auxiliary mouse capture generally works; under strict Wayland compositors it may not. The browser
 build with the large on-screen hold-to-talk button is the guaranteed fallback on any platform.
 
 ## Troubleshooting
@@ -367,4 +367,3 @@ oder generell pnpm approve-builds
 ## Privacy
 
 Audio only. No recording, no transcription, no chat, no video, no accounts in the MVP.
-

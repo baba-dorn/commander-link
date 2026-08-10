@@ -4,6 +4,8 @@ import {
   PttController,
   extractRoomId,
   type JoinRoomResponse,
+  type PttBinding,
+  type PttSettings,
   type PttState,
 } from "@commander-link/core";
 import "./styles.css";
@@ -285,11 +287,10 @@ function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  if (isLauncher && roomId) {
-    return <AppLauncherView roomId={roomId} />;
-  }
-
-  return roomId ? <JoinView roomId={roomId} /> : <HomeView onEnterRoom={navigate} />;
+  const content = isLauncher && roomId
+    ? <AppLauncherView roomId={roomId} />
+    : roomId ? <JoinView roomId={roomId} /> : <HomeView onEnterRoom={navigate} />;
+  return <>{content}<DesktopSettings /></>;
 }
 
 function Brand() {
@@ -299,6 +300,110 @@ function Brand() {
       <span className="brand-text">Commander Link</span>
     </div>
   );
+}
+
+function bindingLabel(binding: PttBinding | null): string {
+  return binding?.label ?? "Nicht eingerichtet";
+}
+
+function DesktopSettings() {
+  const bridge = getBridge();
+  const [open, setOpen] = useState(false);
+  const [settings, setSettings] = useState<PttSettings | null>(null);
+  const [capture, setCapture] = useState<"primary" | "secondary" | null>(null);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [testActive, setTestActive] = useState(false);
+  const [testSpeaking, setTestSpeaking] = useState(false);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+
+  useEffect(() => {
+    if (!bridge) return;
+    void bridge.getPttSettings().then(setSettings);
+    const offChanged = bridge.onPttSettingsChanged(setSettings);
+    const offCapture = bridge.onPttCapture((binding) => {
+      setCapture((slot) => {
+        if (!slot) return slot;
+        setSettings((current) => {
+          if (!current) return current;
+          const other = slot === "primary" ? current.secondaryPttBinding : current.primaryPttBinding;
+          if (other && other.label === binding.label && JSON.stringify(other) === JSON.stringify(binding)) {
+            setCaptureError("Diese Taste ist bereits als PTT-Taste eingestellt.");
+            return current;
+          }
+          const next = { ...current, [slot === "primary" ? "primaryPttBinding" : "secondaryPttBinding"]: binding };
+          void bridge.savePttSettings(next).then((saved) => {
+            setSettings(saved);
+            window.dispatchEvent(new CustomEvent("commander:settings", { detail: saved }));
+          });
+          return next;
+        });
+        return null;
+      });
+      setCaptureError(null);
+    });
+    const offCancelled = bridge.onPttCaptureCancelled(() => setCapture(null));
+    const offDown = bridge.onPttDown(() => { if (testActive) setTestSpeaking(true); });
+    const offUp = bridge.onPttUp(() => setTestSpeaking(false));
+    return () => { offChanged(); offCapture(); offCancelled(); offDown(); offUp(); };
+  }, [bridge, testActive]);
+
+  useEffect(() => {
+    if (!open || !navigator.mediaDevices?.enumerateDevices) return;
+    void navigator.mediaDevices.enumerateDevices().then(setDevices).catch(() => setDevices([]));
+  }, [open]);
+
+  if (!bridge) return null;
+
+  const update = (next: PttSettings) => {
+    setSettings(next);
+    void bridge.savePttSettings(next).then((saved) => {
+      setSettings(saved);
+      window.dispatchEvent(new CustomEvent("commander:settings", { detail: saved }));
+    });
+  };
+  const startCapture = (slot: "primary" | "secondary") => {
+    setCaptureError(null);
+    setCapture(slot);
+    void bridge.startPttCapture();
+  };
+  const stopTest = () => { setTestActive(false); setTestSpeaking(false); };
+
+  return (
+    <>
+      <button className="settings-gear" aria-label="Commander Link Einstellungen" onClick={() => setOpen(true)}>⚙</button>
+      {open && settings && (
+        <div className="settings-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) { stopTest(); setOpen(false); } }}>
+          <section className="panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div className="panel-head"><h2 id="settings-title">⚙ Commander Link Einstellungen</h2><button className="settings-close" onClick={() => { stopTest(); setOpen(false); }}>×</button></div>
+            <h3>Push-to-Talk</h3>
+            <div className="settings-row"><span>PTT-Taste</span><code>{bindingLabel(settings.primaryPttBinding)}</code><button className="btn btn-secondary" onClick={() => startCapture("primary")}>Ändern</button></div>
+            <div className="settings-row"><span>Alternative Taste</span><code>{bindingLabel(settings.secondaryPttBinding)}</code><div className="settings-actions"><button className="btn btn-secondary" onClick={() => startCapture("secondary")}>Ändern</button>{settings.secondaryPttBinding && <button className="btn btn-quiet" onClick={() => update({ ...settings, secondaryPttBinding: null })}>Entfernen</button>}</div></div>
+            {capture && <p className="settings-capture">Gewünschte Taste drücken … <small>Esc = Abbrechen</small></p>}
+            {captureError && <p className="error">{captureError}</p>}
+            <h3>Mikrofon</h3>
+            <label className="settings-field"><span>Gerät</span><select value={settings.microphoneDevice} onChange={(e) => update({ ...settings, microphoneDevice: e.target.value })}><option value="default">Systemstandard</option>{devices.filter((d) => d.kind === "audioinput" && d.deviceId !== "default").map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Mikrofon"}</option>)}</select></label>
+            <h3>Audioausgabe</h3>
+            <label className="settings-field"><span>Gerät</span><select value={settings.audioOutputDevice} onChange={(e) => update({ ...settings, audioOutputDevice: e.target.value })}><option value="default">Systemstandard</option>{devices.filter((d) => d.kind === "audiooutput" && d.deviceId !== "default").map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Audioausgabe"}</option>)}</select></label>
+            <h3>PTT testen</h3>
+            <div className={`ptt-test-status${testSpeaking ? " speaking" : ""}`}>{testSpeaking ? "🔴 Du sendest gerade" : "⚪ Mikrofon stumm"}</div>
+            <button className="btn btn-primary btn-block" onClick={() => { if (testActive) stopTest(); else { setTestActive(true); setTestSpeaking(false); } }}>{testActive ? "Test beenden" : "Test starten"}</button>
+            {testActive && <p className="panel-sub">Halte deine konfigurierte Taste gedrückt und prüfe Press/Release.</p>}
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
+
+function DesktopPttIndicator() {
+  const bridge = getBridge();
+  const [settings, setSettings] = useState<PttSettings | null>(null);
+  useEffect(() => {
+    if (!bridge) return;
+    void bridge.getPttSettings().then(setSettings);
+    return bridge.onPttSettingsChanged(setSettings);
+  }, [bridge]);
+  return bridge ? <span className="ptt-indicator">PTT · {bindingLabel(settings?.primaryPttBinding ?? null)}</span> : null;
 }
 
 function AppLauncherView({ roomId }: { roomId: string }) {
@@ -425,7 +530,7 @@ function HomeView({ onEnterRoom }: { onEnterRoom: (id: string) => void }) {
           <a className="link" href={WINDOWS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
             Desktop-App herunterladen
           </a>
-          <span className="desktop-download-sub"> · mit globaler F8-Push-to-Talk-Taste</span>
+          <span className="desktop-download-sub"> · mit konfigurierbarer globaler Push-to-Talk-Taste</span>
         </p>
       )}
     </main>
@@ -468,10 +573,28 @@ function JoinView({ roomId }: { roomId: string }) {
   const [speakerLevels, setSpeakerLevels] = useState<SpeakerLevel[]>([]);
   const [pttState, setPttState] = useState<PttState>("muted");
   const [error, setError] = useState<string | null>(null);
+  const [desktopSettings, setDesktopSettings] = useState<PttSettings | null>(null);
 
   const connectionRef = useRef<VoiceTransport | null>(null);
   const controllerRef = useRef<PttController | null>(null);
   const sessionRef = useRef<JoinRoomResponse | null>(null);
+
+  useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    void bridge.getPttSettings().then(setDesktopSettings);
+    const offBridge = bridge.onPttSettingsChanged(setDesktopSettings);
+    const onSettings = (event: Event) => {
+      const next = (event as CustomEvent<PttSettings>).detail;
+      setDesktopSettings(next);
+      if (connectionRef.current) {
+        void connectionRef.current.setMicrophoneDevice?.(next.microphoneDevice);
+        void connectionRef.current.setAudioOutputDevice?.(next.audioOutputDevice);
+      }
+    };
+    window.addEventListener("commander:settings", onSettings);
+    return () => { offBridge(); window.removeEventListener("commander:settings", onSettings); };
+  }, []);
 
   // Translate PTT state into the actual microphone action. Fail-closed: anything
   // that is not "transmitting" mutes.
@@ -513,6 +636,9 @@ function JoinView({ roomId }: { roomId: string }) {
       onSpeakerLevels: setSpeakerLevels,
       onError: setError,
       onReconnect: () => controllerRef.current?.reconnect(),
+    }, {
+      microphoneDeviceId: desktopSettings?.microphoneDevice,
+      audioOutputDeviceId: desktopSettings?.audioOutputDevice,
     });
     connectionRef.current = connection;
 
@@ -538,7 +664,7 @@ function JoinView({ roomId }: { roomId: string }) {
     } finally {
       setBusy(false);
     }
-  }, [displayName, roomId]);
+  }, [displayName, roomId, desktopSettings]);
 
   // Heartbeat + leave lifecycle.
   useEffect(() => {
@@ -663,6 +789,7 @@ function JoinView({ roomId }: { roomId: string }) {
     <main className="shell room">
       <header className="room-header">
         <Brand />
+        <DesktopPttIndicator />
         <StatusPill status={status} />
       </header>
 
@@ -676,7 +803,7 @@ function JoinView({ roomId }: { roomId: string }) {
           onPress={() => controllerRef.current?.press()}
           onRelease={() => controllerRef.current?.release()}
         />
-        {desktop && <p className="ptt-hint">Global: F8 gedrückt halten zum Sprechen.</p>}
+        {desktop && <p className="ptt-hint">Global: {bindingLabel(desktopSettings?.primaryPttBinding ?? null)} halten zum Sprechen.</p>}
       </div>
 
       <section className="panel peers-panel">

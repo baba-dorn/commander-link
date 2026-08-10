@@ -10,7 +10,7 @@ Raid commanders already use Discord to speak to the full squad. They sometimes n
 
 ## Users
 
-- Desktop commander: game focused, Discord active, Commander Link minimized/backgrounded, global F8 for private PTT.
+- Desktop commander: game focused, Discord active, Commander Link minimized/backgrounded, configurable global PTT for private voice.
 - Browser commander: no installation; second monitor/browser window with a very large hold-to-talk control.
 
 ## Core journeys
@@ -27,7 +27,7 @@ website and no creator account/key.
 Open the HTTPS invite, enter display name, grant microphone, join muted, hold red button to speak.
 
 ### Join in desktop app
-Open the same invite (or the `commanderlink://` deep link), which opens/activates Electron on the same room, join muted, hold F8 to speak.
+Open the same invite (or the `commanderlink://` deep link), which opens/activates Electron on the same room, join muted, hold the configured PTT binding to speak.
 
 ## UX rules
 

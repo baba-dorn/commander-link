@@ -83,12 +83,12 @@ Acceptance: a browser-only user can complete the entire flow without installing 
 - [x] Parse and validate room IDs from deep links.
 - [x] Enforce single-instance behavior and route second deep-link launches into the existing window.
 - [x] Secure preload bridge exposing only PTT/deep-link capabilities (contextIsolation, no Node in renderer).
-- [x] True global hold/release PTT for F8 via `uiohook-napi` while another app has focus.
+- [x] True global hold/release PTT for configurable keyboard and auxiliary mouse bindings via `uiohook-napi` while another app has focus.
 - [x] Document Linux/Steam Deck X11 vs Wayland key-capture limitations and browser fallback (README).
 - [x] Desktop PTT events feed the exact shared `PttController` used by the browser button.
 - [x] App starts muted; reconnect returns muted (fail-closed state machine).
 
-Acceptance: Windows desktop can join from HTTPS/deep link and F8 hold/release controls only Commander Link, independent of Discord. (manual verification)
+Acceptance: Windows desktop can join from HTTPS/deep link and the configured binding's hold/release controls only Commander Link, independent of Discord. (manual verification)
 
 ## P6 — networking + resilience
 

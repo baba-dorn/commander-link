@@ -1,6 +1,7 @@
 // Bridge to the optional Electron preload API. In a plain browser this is undefined
 // and every helper degrades gracefully. The desktop shell exposes only these narrow,
 // typed capabilities (no Node.js access in the renderer).
+import type { PttBinding, PttSettings } from "@commander-link/core";
 
 export interface CommanderLinkBridge {
   readonly isDesktop: true;
@@ -8,6 +9,13 @@ export interface CommanderLinkBridge {
   onPttUp(cb: () => void): () => void;
   onDeepLinkRoom(cb: (roomId: string) => void): () => void;
   getInitialRoom(): Promise<string | null>;
+  getPttSettings(): Promise<PttSettings>;
+  savePttSettings(settings: PttSettings): Promise<PttSettings>;
+  startPttCapture(): Promise<void>;
+  cancelPttCapture(): Promise<void>;
+  onPttCapture(cb: (binding: PttBinding) => void): () => void;
+  onPttCaptureCancelled(cb: () => void): () => void;
+  onPttSettingsChanged(cb: (settings: PttSettings) => void): () => void;
 }
 
 declare global {

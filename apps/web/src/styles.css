@@ -121,6 +121,38 @@ body::after {
   color: var(--muted);
 }
 
+.settings-gear {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 5;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: rgba(18, 21, 27, 0.82);
+  color: var(--muted);
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+
+.settings-gear:hover { color: var(--text); border-color: var(--gold); }
+.settings-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: var(--s-3); background: rgba(0, 0, 0, 0.68); }
+.settings-panel { width: min(560px, 100%); max-height: 90vh; overflow: auto; }
+.settings-panel h2 { margin: 0; font-size: 1.05rem; }
+.settings-panel h3 { margin: var(--s-3) 0 var(--s-1); font-size: .82rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.settings-close { border: 0; background: none; color: var(--muted); font-size: 1.5rem; cursor: pointer; }
+.settings-row, .settings-field { display: flex; align-items: center; justify-content: space-between; gap: var(--s-1); margin-top: var(--s-1); }
+.settings-row code { flex: 1; color: var(--text); font-family: inherit; }
+.settings-actions { display: flex; gap: var(--s-1); }
+.settings-field select { min-width: 55%; padding: 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); }
+.settings-capture { padding: var(--s-1); border: 1px solid var(--gold); border-radius: var(--radius-sm); color: var(--gold); }
+.settings-capture small { display: block; color: var(--muted); margin-top: 4px; }
+.btn-quiet { border: 0; background: transparent; color: var(--muted); }
+.ptt-test-status { padding: var(--s-1); margin-bottom: var(--s-1); border-radius: var(--radius-sm); background: rgba(255,255,255,.05); }
+.ptt-test-status.speaking { color: var(--red-live); background: rgba(229,73,59,.12); }
+.ptt-indicator { color: var(--muted); font-size: .8rem; }
+
 /* Typography */
 h1 {
   font-size: clamp(1.6rem, 3vw, 2.1rem);

@@ -68,7 +68,7 @@ stays server-side).
 `MeteredPeer.state-change` drives the UI (`connecting`/`connected`/`reconnecting`/`disconnected`).
 On any `reconnecting` transition the transport mutes the local track and the shared
 `PttController` is reset to muted (`reconnect` event → `muted`). After reconnect the user must
-press F8 / the button again. Token refresh on reconnect re-runs the Worker join endpoint, which
+press the configured desktop binding / the button again. Token refresh on reconnect re-runs the Worker join endpoint, which
 reuses the existing admission lease (idempotent) and mints a fresh JWT.
 
 ## Cloudflare

@@ -126,6 +126,8 @@ export interface VoiceTransport {
   mute(): Promise<void>;
 
   setVolume(peerId: string, volume: number): void;
+  setMicrophoneDevice?(deviceId: string): Promise<boolean>;
+  setAudioOutputDevice?(deviceId: string): Promise<boolean>;
 
   /** Development-only diagnostics. Never returns tokens or credentials. */
   getDiagnostics(): Promise<TransportDiagnostics>;

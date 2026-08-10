@@ -49,6 +49,11 @@ import type {
   VoiceTransport,
 } from "./transport";
 
+export interface VoiceTransportOptions {
+  microphoneDeviceId?: string;
+  audioOutputDeviceId?: string;
+}
+
 // Diagnostic snapshot label types used by the low-frequency sampling.
 export type SnapshotLabel =
   | "WEBRTC_CONNECTED"
@@ -93,7 +98,7 @@ function trackSnapshot(track: MediaStreamTrack | null | undefined): TrackSnapsho
  *
  * - One microphone MediaStream is acquired on join and kept alive; PTT only
  *   toggles `track.enabled` (silence), so the established PeerConnections are
- *   never renegotiated on every F8 press.
+ *   never renegotiated on every PTT press.
  * - Everyone starts muted; every failure path fails closed to muted.
  * - Remote audio is rendered via one per-peer <audio> element with its own volume.
  *
@@ -133,7 +138,7 @@ export class MeteredRealtimeTransport implements VoiceTransport {
   private readonly sink: HTMLElement;
   private readonly monitor: AudioLevelMonitor;
 
-  constructor(private readonly callbacks: ConnectionCallbacks) {
+  constructor(private readonly callbacks: ConnectionCallbacks, private readonly options: VoiceTransportOptions = {}) {
     this.sink = document.createElement("div");
     this.sink.setAttribute("aria-hidden", "true");
     this.sink.style.display = "none";
@@ -163,7 +168,12 @@ export class MeteredRealtimeTransport implements VoiceTransport {
     // Acquire exactly one microphone stream, then start muted immediately.
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: this.options.microphoneDeviceId && this.options.microphoneDeviceId !== "default"
+          ? { deviceId: { exact: this.options.microphoneDeviceId } }
+          : true,
+        video: false,
+      });
     } catch (err) {
       this.callbacks.onError(`Mikrofon nicht verfügbar: ${(err as Error).message}`);
       throw err;
@@ -226,6 +236,7 @@ export class MeteredRealtimeTransport implements VoiceTransport {
       this.monitor.addTrack(localTrack.id, localId, localTrack, displayName);
     }
     this.audioReady = true;
+    if (this.options.audioOutputDeviceId) await this.setAudioOutputDevice(this.options.audioOutputDeviceId);
     this.emitPeers();
     this.callbacks.onStatus("connected");
     logWebrtc("WEBRTC_CONNECTED_SNAPSHOT", this.snapshotLine("connected"));
@@ -339,6 +350,47 @@ export class MeteredRealtimeTransport implements VoiceTransport {
     const el = this.audioElements.get(peerId);
     if (el) el.volume = clamped;
     this.emitPeers();
+  }
+
+  async setMicrophoneDevice(deviceId: string): Promise<boolean> {
+    if (!this.peer || !this.localTrack) return false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: deviceId && deviceId !== "default" ? { deviceId: { exact: deviceId } } : true,
+        video: false,
+      });
+      const next = stream.getAudioTracks()[0];
+      if (!next) return false;
+      next.enabled = false;
+      for (const remote of this.peer.remotePeers) {
+        const pc = remote.pc as unknown as RTCPeerConnection;
+        for (const sender of pc.getSenders()) {
+          if (sender.track?.kind === "audio") await sender.replaceTrack(next);
+        }
+      }
+      this.localTrack.enabled = false;
+      this.localTrack.stop();
+      this.localTrack = next;
+      this.localStream?.getTracks().forEach((track) => { if (track !== next) track.stop(); });
+      this.localStream = stream;
+      return true;
+    } catch (err) {
+      this.callbacks.onError(`Mikrofonwechsel fehlgeschlagen: ${(err as Error).message}`);
+      await this.mute();
+      return false;
+    }
+  }
+
+  async setAudioOutputDevice(deviceId: string): Promise<boolean> {
+    if (deviceId !== "default" && typeof HTMLMediaElement.prototype.setSinkId !== "function") return false;
+    try {
+      for (const audio of this.audioElements.values()) {
+        if (typeof HTMLMediaElement.prototype.setSinkId === "function") await audio.setSinkId(deviceId);
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async getDiagnostics(): Promise<TransportDiagnostics> {
@@ -872,8 +924,8 @@ export class MeteredRealtimeTransport implements VoiceTransport {
  * coturn + custom signalling, …) means replacing this factory — the React UI
  * and PttController never see MeteredPeer directly.
  */
-export function createVoiceTransport(callbacks: ConnectionCallbacks): VoiceTransport {
-  return new MeteredRealtimeTransport(callbacks);
+export function createVoiceTransport(callbacks: ConnectionCallbacks, options?: VoiceTransportOptions): VoiceTransport {
+  return new MeteredRealtimeTransport(callbacks, options);
 }
 
 export type {
