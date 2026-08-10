@@ -25,6 +25,7 @@ import {
   type GatheredCandidatesSummary,
   type IceServersSummary,
 } from "./diagnostics";
+import { OPEN_RELAY_ICE_SERVERS, resolveIceConfig } from "./ice-fallback";
 import {
   applyPeerJoined,
   applyPeerLeft,
@@ -36,7 +37,6 @@ import {
   isWebrtcLogEnabled,
   logWebrtc,
   pcStateOf,
-  setWebrtcLogEnabled,
   trackStateOf,
   type LogEvent,
 } from "./webrtc-log";
@@ -125,6 +125,8 @@ export class MeteredRealtimeTransport implements VoiceTransport {
   private cachedHistory: LogEvent[] = [];
   private historyTimer: number | null = null;
   private iceServersSummary: IceServersSummary = { received: false, stunCount: 0, turnCount: 0, entries: [] };
+  private forceRelay = false;
+  private fallbackApplied = false;
   private localInfo: { id: string; name: string } | null = null;
   private readonly audioElements = new Map<string, HTMLAudioElement>();
   private readonly remoteStreamIds = new Map<string, string>();
@@ -136,6 +138,13 @@ export class MeteredRealtimeTransport implements VoiceTransport {
     this.sink.setAttribute("aria-hidden", "true");
     this.sink.style.display = "none";
     document.body.append(this.sink);
+
+    // Debug-only relay force: `?debug=webrtc&forceRelay=1`. Sets
+    // iceTransportPolicy:"relay" so every PeerConnection is forced through the
+    // relay. Production default stays "all" (policy never set).
+    this.forceRelay =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("forceRelay") === "1";
 
     this.monitor = new AudioLevelMonitor(DEFAULT_AUDIO_LEVEL_CONFIG, (levels) => {
       this.callbacks.onSpeakerLevels(levels);
@@ -185,6 +194,18 @@ export class MeteredRealtimeTransport implements VoiceTransport {
       // reconnect, so JWTs (and any rotated TURN creds) stay fresh.
       tokenProvider: () => this.mintToken(),
       logger: import.meta.env.DEV ? ConsoleLogger : undefined,
+      // The SDK creates every RTCPeerConnection internally. This factory is
+      // forwarded to each of those creations (both new peers and reconnect PC
+      // swaps), so it is the single integration point for the Open Relay
+      // fallback: Metered's welcome iceServers win when present; otherwise the
+      // fallback servers are applied so cross-network ICE actually works.
+      rtcPeerConnectionFactory: (sdkConfig: RTCConfiguration) => {
+        const { config, fallbackApplied } = resolveIceConfig(sdkConfig, {
+          forceRelay: this.forceRelay,
+        });
+        this.fallbackApplied = this.fallbackApplied || fallbackApplied;
+        return new RTCPeerConnection(config);
+      },
     });
     this.peer = peer;
     this.wirePeerEvents(peer);
@@ -208,10 +229,20 @@ export class MeteredRealtimeTransport implements VoiceTransport {
     this.emitPeers();
     this.callbacks.onStatus("connected");
     logWebrtc("WEBRTC_CONNECTED_SNAPSHOT", this.snapshotLine("connected"));
-    // If no peer has joined yet, the welcome's iceServers will be picked up by
-    // the first peer-joined handler; report it as soon as it is known.
+    // Report the effective ICE configuration. When Metered's welcome delivered
+    // no iceServers, the Open Relay fallback was applied inside the factory —
+    // log it explicitly so a `received:NO` report is never mistaken for a
+    // TURN-less connection.
+    if (this.forceRelay) {
+      logWebrtc("ICE_POLICY", "iceTransportPolicy=relay (forceRelay=1, debug only)", "warn");
+    }
     if (this.iceServersSummary.received) {
       logWebrtc("TURN_CONFIG", iceServersSummaryLine(this.iceServersSummary));
+    } else if (this.fallbackApplied) {
+      const fallback = summarizeIceServers(
+        OPEN_RELAY_ICE_SERVERS as unknown as unknown[]
+      );
+      logWebrtc("TURN_CONFIG_FALLBACK", iceServersSummaryLine(fallback));
     }
     void this.captureSnapshot("WEBRTC_CONNECTED");
     // Keep a bounded event history for the copy-diagnostics report (read by the
@@ -364,6 +395,8 @@ export class MeteredRealtimeTransport implements VoiceTransport {
         received: iceServers.received,
         stunCount: iceServers.stunCount,
         turnCount: iceServers.turnCount,
+        fallbackApplied: this.fallbackApplied,
+        forceRelay: this.forceRelay,
         entries: iceServers.entries.map((e) => ({
           scheme: e.scheme,
           hostname: e.hostname,
@@ -413,7 +446,9 @@ export class MeteredRealtimeTransport implements VoiceTransport {
     // The Metered welcome frame's `metadata.iceServers` (auto-injected TURN) is
     // applied by the SDK to every RTCPeerConnection it builds. We observe it via
     // the first peer's configuration as soon as it exists; no credential values
-    // are ever read or logged.
+    // are ever read or logged. When Metered delivers nothing, the Open Relay
+    // fallback (injected by our rtcPeerConnectionFactory) is what getConfiguration
+    // reports — the log label distinguishes the two.
     peer.on("peer-joined", ({ peer: remote }) => {
       const id = remote.id;
       const name = nameFromMetadata(remote.metadata) || "Unbekannt";
@@ -427,7 +462,7 @@ export class MeteredRealtimeTransport implements VoiceTransport {
             const cfg = pc.getConfiguration();
             this.iceServersSummary = summarizeIceServers(cfg.iceServers);
             const line = iceServersSummaryLine(this.iceServersSummary);
-            logWebrtc("TURN_CONFIG", line);
+            logWebrtc(this.fallbackApplied ? "TURN_CONFIG_FALLBACK" : "TURN_CONFIG", line);
           } catch {
             logWebrtc("TURN_CONFIG", "read failed (getConfiguration threw)");
           }

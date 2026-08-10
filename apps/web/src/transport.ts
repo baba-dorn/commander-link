@@ -92,6 +92,10 @@ export interface IceServersDiag {
   received: boolean;
   stunCount: number;
   turnCount: number;
+  /** Whether the Open Relay fallback was applied (Metered delivered nothing). */
+  fallbackApplied: boolean;
+  /** Debug-only relay force active (iceTransportPolicy:"relay"). */
+  forceRelay: boolean;
   /** Sanitized entries — scheme/hostname/port/transport only, no credentials. */
   entries: IceServerDiagEntry[];
 }

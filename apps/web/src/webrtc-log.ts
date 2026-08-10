@@ -121,6 +121,8 @@ export function formatDiagnosticsReport(input: {
     received: boolean;
     stunCount: number;
     turnCount: number;
+    fallbackApplied: boolean;
+    forceRelay: boolean;
     entries: Array<{
       scheme: string;
       hostname: string;
@@ -174,6 +176,8 @@ export function formatDiagnosticsReport(input: {
   if (ice) {
     lines.push("Metered ICE configuration (welcome):");
     lines.push(`  TURN configuration received: ${ice.received ? "YES" : "NO"}`);
+    lines.push(`  Open Relay fallback applied: ${ice.fallbackApplied ? "YES" : "NO"}`);
+    lines.push(`  forceRelay (debug): ${ice.forceRelay ? "YES" : "NO"}`);
     lines.push(`  STUN server count: ${ice.stunCount}`);
     lines.push(`  TURN/TURNS server count: ${ice.turnCount}`);
     for (const entry of ice.entries) {

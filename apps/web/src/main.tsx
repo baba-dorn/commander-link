@@ -169,6 +169,14 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
                     <td>{diag.iceServers.received ? "YES" : "NO"}</td>
                   </tr>
                   <tr>
+                    <td>Open Relay fallback</td>
+                    <td>{diag.iceServers.fallbackApplied ? "applied" : "off"}</td>
+                  </tr>
+                  <tr>
+                    <td>forceRelay (debug)</td>
+                    <td>{diag.iceServers.forceRelay ? "YES" : "NO"}</td>
+                  </tr>
+                  <tr>
                     <td>STUN servers</td>
                     <td>{diag.iceServers.stunCount}</td>
                   </tr>

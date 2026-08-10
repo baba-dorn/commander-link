@@ -21,9 +21,14 @@ TURN relay only when ICE requires it
   server-reflexive (`srflx`) candidates connect.
 - **TURN is fallback only.** Metered Realtime auto-injects Metered TURN
   credentials via the authenticated welcome message when the Realtime key's
-  "Auto-inject TURN" toggle is on (default). Open Relay / coturn remain a
-  separately swappable TURN provider behind the transport boundary; nothing is
-  hardcoded in the client.
+  "Auto-inject TURN" toggle is on (default). Metered currently delivers no
+  `metadata.iceServers` (verified `TURN configuration received: NO`), so the
+  client applies an explicit Open Relay fallback
+  (`stun`/`turn`/`turns` at `staticauth.openrelay.metered.ca`) through the
+  SDK's `rtcPeerConnectionFactory` — the single point every internal
+  RTCPeerConnection is created through. Metered-provided servers, when present,
+  win over the fallback. A coturn or other provider remains swappable behind
+  that same integration point.
 - No SFU, no media server, no video, no screen sharing.
 
 ## Required tests

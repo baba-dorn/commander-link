@@ -112,7 +112,7 @@ The JWT carries:
 - `peerMetadata.username` — display name, surfaced on presence,
 - short expiry (`TOKEN_TTL_SECONDS`, default 1h).
 
-Metered TURN credentials are auto-injected by the Realtime service into the welcome message when the key's "Auto-inject TURN" toggle is on (default). No TURN username/password is hardcoded anywhere in the client. Open Relay / coturn remain a separately swappable TURN provider behind the same boundary (supplied via `metadata.iceServers` in the minted JWT if a custom provider is ever required).
+Metered TURN credentials are auto-injected by the Realtime service into the welcome message when the key's "Auto-inject TURN" toggle is on (default). When Metered delivers no `metadata.iceServers` (currently the case — verified `TURN configuration received: NO`), the client applies an explicit Open Relay fallback (`stun`/`turn`/`turns` at `staticauth.openrelay.metered.ca`) via the SDK's `rtcPeerConnectionFactory`, so every RTCPeerConnection the SDK creates internally has working STUN/TURN. The Open Relay credentials are the public, published test credentials and are never surfaced verbatim in diagnostics (only scheme/hostname/port + "credentials present"). A coturn or other provider remains swappable behind the same factory integration point.
 
 ## Admission vs presence
 
