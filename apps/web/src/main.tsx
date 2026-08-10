@@ -21,7 +21,8 @@ import {
   WINDOWS_DOWNLOAD_URL,
 } from "./desktop";
 import type { SpeakerLevel } from "./audio-level";
-import type { TransportDiagnostics } from "./transport";
+import type { TransportDiagnostics, TransportDiagnosticsPeer } from "./transport";
+import { formatDiagnosticsReport, setWebrtcLogEnabled, type LogEvent } from "./webrtc-log";
 
 const ROOM_PATH = /^\/r\/([A-Za-z0-9_-]{20,128})$/;
 const APP_LAUNCHER_PATH = /^\/app\/([A-Za-z0-9_-]{20,128})$/;
@@ -30,8 +31,26 @@ const APP_LAUNCHER_PATH = /^\/app\/([A-Za-z0-9_-]{20,128})$/;
 const DIAGNOSTICS_ENABLED =
   import.meta.env.DEV || new URLSearchParams(window.location.search).has("diag");
 
+// WebRTC/PTT diagnostics: enabled with `?debug=webrtc` (also enables the
+// diagnostics panel), or always in dev. Never affects behaviour — observation only.
+const WEBRTC_DEBUG_ENABLED =
+  import.meta.env.DEV || new URLSearchParams(window.location.search).get("debug") === "webrtc";
+
+if (WEBRTC_DEBUG_ENABLED) setWebrtcLogEnabled(true);
+
+const CLIENT_PLATFORM: "Electron" | "Browser" = getBridge() ? "Electron" : "Browser";
+
+const PLATFORM_NAME = (() => {
+  const ua = navigator.userAgent;
+  if (/windows/i.test(ua)) return "Windows";
+  if (/mac os/i.test(ua)) return "macOS";
+  if (/linux/i.test(ua)) return "Linux";
+  return "unknown";
+})();
+
 function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
   const [diag, setDiag] = useState<TransportDiagnostics | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!transport) return;
@@ -52,30 +71,100 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
     };
   }, [transport]);
 
+  const copyReport = async () => {
+    if (!transport) return;
+    try {
+      const current =
+        diag ?? (await transport.getDiagnostics());
+      const report = formatDiagnosticsReport({
+        client: CLIENT_PLATFORM,
+        platform: PLATFORM_NAME,
+        roomId: current.roomId,
+        channel: current.channel,
+        localPeerId: current.localPeerId ?? "",
+        state: current.state,
+        peers: (current.remotePeers ?? []).map((p) => ({
+          name: p.name,
+          id: p.id,
+          connectionState: p.connectionState ?? "n/a",
+          iceConnectionState: p.iceConnectionState,
+          signalingState: p.signalingState ?? "n/a",
+          candidateType: p.candidateType,
+          localCandidateType: p.localCandidateType,
+          remoteCandidateType: p.remoteCandidateType,
+          protocol: p.protocol,
+          rttMs: p.rttMs,
+          bytesSent: p.bytesSent,
+          bytesReceived: p.bytesReceived,
+          packetsSent: p.packetsSent,
+          packetsReceived: p.packetsReceived,
+          audioTrackState: p.audioTrackState ?? "n/a",
+          audioMuted: p.audioMuted,
+          audioEnabled: p.audioEnabled,
+        })),
+        history: (current.events ?? []) as LogEvent[],
+      });
+      await navigator.clipboard.writeText(report);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be unavailable (e.g. non-secure context); no crash.
+    }
+  };
+
+  const peerDetails = (p: TransportDiagnosticsPeer) => [
+    ["State", p.state],
+    ["ICE", p.iceConnectionState],
+    ["Signaling", p.signalingState ?? "n/a"],
+    ["Selected path", p.candidateType ?? "n/a"],
+    ["Local candidate", p.localCandidateType ?? "n/a"],
+    ["Remote candidate", p.remoteCandidateType ?? "n/a"],
+    ["Protocol", p.protocol ?? "n/a"],
+    ["RTT", p.rttMs !== null ? `${p.rttMs.toFixed(1)} ms` : "n/a"],
+    ["Audio bytes sent", p.bytesSent !== null ? String(p.bytesSent) : "n/a"],
+    ["Audio bytes recv", p.bytesReceived !== null ? String(p.bytesReceived) : "n/a"],
+    ["Audio packets sent", p.packetsSent !== null ? String(p.packetsSent) : "n/a"],
+    ["Audio packets recv", p.packetsReceived !== null ? String(p.packetsReceived) : "n/a"],
+    ["Track", p.audioTrackState ?? "n/a"],
+    ["Track enabled", p.audioEnabled === null ? "n/a" : String(p.audioEnabled)],
+    ["Track muted", p.audioMuted === null ? "n/a" : String(p.audioMuted)],
+  ] as const;
+
   return (
     <details className="diagnostics">
       <summary>Diagnostik (Entwicklung)</summary>
       {diag ? (
-        <table className="diag-table">
-          <tbody>
-            <tr>
-              <td>Raum</td>
-              <td>{diag.roomId || "–"}</td>
-            </tr>
-            <tr>
-              <td>Realtime Channel</td>
-              <td>{diag.channel || "–"}</td>
-            </tr>
-            <tr>
-              <td>Peer-ID</td>
-              <td>{diag.localPeerId ?? "–"}</td>
-            </tr>
-            <tr>
-              <td>SDK-State</td>
-              <td>{diag.state}</td>
-            </tr>
-          </tbody>
-        </table>
+        <>
+          <table className="diag-table">
+            <tbody>
+              <tr>
+                <td>Raum</td>
+                <td>{diag.roomId || "–"}</td>
+              </tr>
+              <tr>
+                <td>Realtime Channel</td>
+                <td>{diag.channel || "–"}</td>
+              </tr>
+              <tr>
+                <td>Peer-ID</td>
+                <td>{diag.localPeerId ?? "–"}</td>
+              </tr>
+              <tr>
+                <td>SDK-State</td>
+                <td>{diag.state}</td>
+              </tr>
+              <tr>
+                <td>Client</td>
+                <td>{CLIENT_PLATFORM} · {PLATFORM_NAME}</td>
+              </tr>
+            </tbody>
+          </table>
+          {WEBRTC_DEBUG_ENABLED && (
+            <button className="btn btn-secondary diag-copy" onClick={copyReport}>
+              {copied ? "Kopiert ✓" : "Copy diagnostics"}
+            </button>
+          )}
+        </>
       ) : (
         <p>Keine Verbindung.</p>
       )}
@@ -84,13 +173,29 @@ function DiagnosticsPanel({ transport }: { transport: VoiceTransport | null }) {
           <li key={p.id}>
             <strong>{p.name}</strong> <span className="muted">({p.id.slice(0, 8)}…)</span>
             <ul>
-              <li>State: {p.state}</li>
-              <li>ICE: {p.iceConnectionState}</li>
-              <li>Candidate: {p.candidateType ?? "n/a"}</li>
+              {peerDetails(p).map(([label, value]) => (
+                <li key={label}>
+                  {label}: {value}
+                </li>
+              ))}
             </ul>
           </li>
         ))}
       </ul>
+      {WEBRTC_DEBUG_ENABLED && diag && diag.events && diag.events.length > 0 && (
+        <details className="diag-events">
+          <summary>Letzte Events ({diag.events.length})</summary>
+          <ul className="diag-event-list">
+            {diag.events
+              .slice(-40)
+              .map((ev, i) => (
+                <li key={`${ev.time}-${i}`}>
+                  {ev.time} {ev.label} {ev.detail}
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
     </details>
   );
 }
@@ -572,7 +677,9 @@ function JoinView({ roomId }: { roomId: string }) {
         </ul>
       </section>
 
-      {DIAGNOSTICS_ENABLED && <DiagnosticsPanel transport={connectionRef.current} />}
+      {(DIAGNOSTICS_ENABLED || WEBRTC_DEBUG_ENABLED) && (
+        <DiagnosticsPanel transport={connectionRef.current} />
+      )}
 
       {error && <p className="error">{error}</p>}
     </main>

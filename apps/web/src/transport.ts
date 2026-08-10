@@ -37,10 +37,36 @@ export interface TransportDiagnosticsPeer {
   name: string;
   /** RemotePeer connection state: idle | connecting | connected | reconnecting | closed. */
   state: string;
+  /** Underlying RTCPeerConnection.connectionState when known. */
+  connectionState: string;
   /** Underlying RTCPeerConnection.iceConnectionState. */
   iceConnectionState: string;
+  /** Underlying RTCPeerConnection.signalingState when known. */
+  signalingState: string;
   /** Selected candidate type when available: host | srflx | relay | null. */
   candidateType: string | null;
+  /** Local side of the selected ICE candidate pair (host | srflx | prflx | relay). */
+  localCandidateType: string | null;
+  /** Remote side of the selected ICE candidate pair (host | srflx | prflx | relay). */
+  remoteCandidateType: string | null;
+  /** Selected pair protocol: udp | tcp | null. */
+  protocol: string | null;
+  /** Selected pair currentRoundTripTime in ms, or null. */
+  rttMs: number | null;
+  /** Aggregate audio bytes sent (outbound-rtp), or null when no RTP yet. */
+  bytesSent: number | null;
+  /** Aggregate audio bytes received (inbound-rtp), or null when no RTP yet. */
+  bytesReceived: number | null;
+  /** Aggregate audio packets sent, or null. */
+  packetsSent: number | null;
+  /** Aggregate audio packets received, or null. */
+  packetsReceived: number | null;
+  /** Remote audio track snapshot for this peer (kind/readyState), or null. */
+  audioTrackState: string | null;
+  /** Remote audio track muted flag when known, else null. */
+  audioMuted: boolean | null;
+  /** Remote audio track enabled flag when known, else null. */
+  audioEnabled: boolean | null;
 }
 
 export interface TransportDiagnostics {
@@ -50,6 +76,8 @@ export interface TransportDiagnostics {
   /** MeteredPeer lifecycle state: idle | joining | joined | reconnecting | leaving | closed. */
   state: string;
   remotePeers: TransportDiagnosticsPeer[];
+  /** Debug-mode only: recent instrumented events (PTT, ICE, negotiation, tracks). */
+  events?: Array<{ time: string; label: string; detail: string }>;
 }
 
 /**

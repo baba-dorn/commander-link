@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
+import fs from "node:fs";
 import { uIOhook, UiohookKey } from "uiohook-napi";
 import { deepLinkFromArgv, roomFromDeepLink } from "./deep-link";
 
@@ -9,6 +10,42 @@ const PROD_WEB_URL = "https://commander-link.joinoops.win";
 const WEB_URL =
   process.env.COMMANDER_LINK_WEB_URL ??
   (process.env.NODE_ENV !== "development" ? PROD_WEB_URL : DEV_WEB_URL);
+
+// WebRTC/PTT diagnostics for the packaged app: when the env var is set (e.g.
+// `COMMANDER_LINK_DEBUG_LOGS=1` when launching the installed exe), renderer
+// console output is piped to stdout and a log file next to the executable, so
+// a packaged Windows test can capture `[webrtc] ...` lines without DevTools.
+const DEBUG_LOGS = process.env.COMMANDER_LINK_DEBUG_LOGS === "1";
+let debugLogStream: fs.WriteStream | null = null;
+
+function setupDebugLogStream(): void {
+  if (!DEBUG_LOGS) return;
+  try {
+    const dir = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
+    const stream = fs.createWriteStream(path.join(dir, "commander-link-debug.log"), {
+      flags: "a",
+    });
+    stream.on("error", () => {});
+    debugLogStream = stream;
+  } catch {
+    debugLogStream = null;
+  }
+}
+
+function pipeDebugLine(line: string): void {
+  if (!DEBUG_LOGS) return;
+  const stamp = new Date().toISOString();
+  const output = `[${stamp}] ${line}`;
+  if (debugLogStream) {
+    try {
+      debugLogStream.write(`${output}\n`);
+    } catch {
+      // best effort
+    }
+  } else {
+    process.stdout.write(`${output}\n`);
+  }
+}
 
 // Default global PTT key. Configurable later; F8 keeps clear of common game binds.
 const PTT_KEYCODE = UiohookKey.F8;
@@ -38,6 +75,20 @@ function createWindow(): void {
       sandbox: true,
     },
   });
+  if (DEBUG_LOGS) {
+    // Pipe the renderer's console (including `[webrtc]` instrumentation) out of
+    // the packaged window so `?debug=webrtc` is testable on a normal Windows PC.
+    mainWindow.webContents.on("console-message", (_event, _level, message) => {
+      pipeDebugLine(message);
+    });
+    // Re-inject the debug flag on every navigation so the URL-query flag is not
+    // required in the packaged client.
+    mainWindow.webContents.on("did-finish-load", () => {
+      void mainWindow?.webContents.executeJavaScript(
+        "window.__commanderLinkDebug = true;"
+      );
+    });
+  }
   void mainWindow.loadURL(WEB_URL);
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -95,6 +146,7 @@ if (!gotLock) {
   ipcMain.handle("deeplink:getInitial", () => pendingRoom);
 
   app.whenReady().then(() => {
+    setupDebugLogStream();
     createWindow();
     startGlobalPtt();
     app.on("activate", () => {
@@ -111,6 +163,14 @@ if (!gotLock) {
       uIOhook.stop();
     } catch {
       // ignore
+    }
+    if (debugLogStream) {
+      try {
+        debugLogStream.end();
+      } catch {
+        // ignore
+      }
+      debugLogStream = null;
     }
   });
 }

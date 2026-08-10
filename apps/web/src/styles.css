@@ -651,6 +651,36 @@ input[type="text"]:focus-visible {
   color: var(--muted);
 }
 
+.diag-copy {
+  margin-top: var(--s-1);
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
+.diag-events {
+  margin-top: var(--s-2);
+}
+
+.diag-events summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.diag-event-list {
+  list-style: none;
+  margin: var(--s-1) 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: "Cascadia Code", ui-monospace, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .muted {
   color: var(--faint);
 }
