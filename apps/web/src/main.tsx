@@ -19,6 +19,7 @@ import {
 import {
   getBridge,
   isDesktop,
+  supportsPttSettings,
   showWindowsDownload,
   WINDOWS_DOWNLOAD_URL,
 } from "./desktop";
@@ -317,7 +318,7 @@ function DesktopSettings() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
 
   useEffect(() => {
-    if (!bridge) return;
+    if (!bridge || !supportsPttSettings()) return;
     void bridge.getPttSettings().then(setSettings);
     const offChanged = bridge.onPttSettingsChanged(setSettings);
     const offCapture = bridge.onPttCapture((binding) => {
@@ -352,7 +353,7 @@ function DesktopSettings() {
     void navigator.mediaDevices.enumerateDevices().then(setDevices).catch(() => setDevices([]));
   }, [open]);
 
-  if (!bridge) return null;
+  if (!bridge || !supportsPttSettings()) return null;
 
   const update = (next: PttSettings) => {
     setSettings(next);
@@ -399,7 +400,7 @@ function DesktopPttIndicator() {
   const bridge = getBridge();
   const [settings, setSettings] = useState<PttSettings | null>(null);
   useEffect(() => {
-    if (!bridge) return;
+    if (!bridge || !supportsPttSettings()) return;
     void bridge.getPttSettings().then(setSettings);
     return bridge.onPttSettingsChanged(setSettings);
   }, [bridge]);
@@ -581,7 +582,7 @@ function JoinView({ roomId }: { roomId: string }) {
 
   useEffect(() => {
     const bridge = getBridge();
-    if (!bridge) return;
+    if (!bridge || !supportsPttSettings()) return;
     void bridge.getPttSettings().then(setDesktopSettings);
     const offBridge = bridge.onPttSettingsChanged(setDesktopSettings);
     const onSettings = (event: Event) => {

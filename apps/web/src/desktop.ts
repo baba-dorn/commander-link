@@ -32,6 +32,13 @@ export function isDesktop(): boolean {
   return Boolean(window.commanderLink?.isDesktop);
 }
 
+/** New settings IPC is optional so an older installed Electron shell can still
+ * load the hosted renderer and retain its legacy global PTT behaviour. */
+export function supportsPttSettings(): boolean {
+  const bridge = getBridge() as Partial<CommanderLinkBridge> | null;
+  return Boolean(bridge && typeof bridge.getPttSettings === "function" && typeof bridge.savePttSettings === "function");
+}
+
 // Stable "latest Windows installer" URL, routed through the always-current
 // GitHub latest-release page so it survives future version bumps.
 export const WINDOWS_DOWNLOAD_URL =
