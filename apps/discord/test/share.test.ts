@@ -42,8 +42,14 @@ describe("shareRoom", () => {
       Authorization: "Bot bot-secret",
       "Content-Type": "application/json",
     });
-    expect(String(init.body)).toContain(`${env.commanderLinkWebUrl}/r/${roomId}`);
-    expect(String(init.body)).toContain(`${env.commanderLinkWebUrl}/app/${roomId}`);
+    const posted = JSON.parse(String(init.body)) as { content: string; components: Array<{ components: Array<{ label: string; url?: string }> }> };
+    expect(posted.content).toContain(`\`\`\`\n${env.commanderLinkWebUrl}/r/${roomId}\n\`\`\``);
+    expect(posted.content).not.toContain(`${env.commanderLinkWebUrl}/app/${roomId}`);
+    expect(posted.content).not.toContain("commanderlink://");
+    expect(posted.components[0].components).toEqual([
+      { type: 2, style: 5, label: "In der App öffnen", url: `${env.commanderLinkWebUrl}/app/${roomId}` },
+      { type: 2, style: 5, label: "Im Browser öffnen", url: `${env.commanderLinkWebUrl}/r/${roomId}` },
+    ]);
     await expect(env.invitationTracking.get(`invitation:${roomId}`, "json")).resolves.toMatchObject({ roomId, messageId: "message-1" });
   });
 

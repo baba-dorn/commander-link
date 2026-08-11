@@ -238,14 +238,14 @@ export function roomCreatedResponse(inviteUrl: string, roomId: string, sharingAv
   return {
     type: 4,
     data: {
-      content: `Commander-Link-Raum erstellt.\n\n🌐 Im Browser öffnen\n${inviteUrl}\n\n🖥 In der Commander-Link-App öffnen\n${appLauncherUrl}\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`,
+      content: `✅ Commander-Link-Raum erstellt\n\n📋 Link zum Teilen\n\`\`\`\n${inviteUrl}\n\`\`\`\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`,
       flags: EPHEMERAL,
       components: [
         {
           type: 1,
           components: [
-            { type: 2, style: 5, label: "Im Browser öffnen", url: inviteUrl },
             { type: 2, style: 5, label: "In der App öffnen", url: appLauncherUrl },
+            { type: 2, style: 5, label: "Im Browser öffnen", url: inviteUrl },
             ...(sharingAvailable
               ? [{ type: 2, style: 1, label: SHARE_LABEL, custom_id: shareCustomId(roomId) }]
               : []),

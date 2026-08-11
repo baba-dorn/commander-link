@@ -735,3 +735,20 @@ input[type="text"]:focus-visible {
   margin-top: var(--s-2);
 }
 
+.launcher-minimal {
+  width: min(100% - 2rem, 360px);
+  text-align: center;
+  color: var(--muted);
+}
+
+.launcher-minimal .brand {
+  justify-content: center;
+  margin-bottom: var(--s-4);
+}
+
+.launcher-close-hint,
+.launcher-fallback-label {
+  color: var(--faint);
+  font-size: 0.9rem;
+}
+

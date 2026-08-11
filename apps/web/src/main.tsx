@@ -408,10 +408,9 @@ function DesktopPttIndicator() {
 }
 
 function AppLauncherView({ roomId }: { roomId: string }) {
-  const [attempted, setAttempted] = useState(false);
+  const [fallbackVisible, setFallbackVisible] = useState(false);
 
   useEffect(() => {
-    // Attempt to launch the desktop app via custom protocol
     const deepLinkUrl = `commanderlink://join/${roomId}`;
     
     // Create a hidden iframe to attempt the custom protocol launch
@@ -421,17 +420,16 @@ function AppLauncherView({ roomId }: { roomId: string }) {
     iframe.src = deepLinkUrl;
     document.body.appendChild(iframe);
     
-    // Clean up iframe after a short delay
-    const timer = setTimeout(() => {
-      document.body.removeChild(iframe);
-      setAttempted(true);
-    }, 1000);
-    
-    // Also try window.location as fallback mechanism
-    window.location.href = deepLinkUrl;
+    // Closing is best effort only; browsers may reject closing a tab that was
+    // not opened by script. The fallback therefore stays independently usable.
+    const closeTimer = window.setTimeout(() => {
+      try { window.close(); } catch { /* browser policy may reject this */ }
+    }, 120);
+    const fallbackTimer = window.setTimeout(() => setFallbackVisible(true), 1200);
     
     return () => {
-      clearTimeout(timer);
+      window.clearTimeout(closeTimer);
+      window.clearTimeout(fallbackTimer);
       if (iframe.parentNode) {
         try {
           document.body.removeChild(iframe);
@@ -442,27 +440,30 @@ function AppLauncherView({ roomId }: { roomId: string }) {
     };
   }, [roomId]);
 
-  const browserUrl = `/r/${roomId}`;
+  const browserUrl = `/r/${roomId}${window.location.search}${window.location.hash}`;
 
   return (
     <main className="shell launcher">
-      <Brand />
-      <section className="panel panel-centered">
-        <h1>Commander Link wird geöffnet …</h1>
-        <p className="lead">
-          Falls die App nicht automatisch startet:
-        </p>
-        <div className="launcher-actions">
-          <a className="btn btn-primary btn-block" href={browserUrl}>
-            Im Browser öffnen
-          </a>
-          {showWindowsDownload() && (
-            <a className="btn btn-secondary btn-block" href={WINDOWS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
-              Commander Link herunterladen
-            </a>
-          )}
-        </div>
-      </section>
+      <div className="launcher-minimal" aria-live="polite">
+        <div className="brand"><span className="brand-mark" aria-hidden="true" /><span className="brand-text">Commander Link</span></div>
+        {!fallbackVisible ? <p>Commander Link wird geöffnet …</p> : (
+          <>
+            <p><strong>✓ Commander Link wurde angefordert</strong></p>
+            <p className="launcher-close-hint">Du kannst diesen Tab jetzt schließen.</p>
+            <p className="launcher-fallback-label">App startet nicht?</p>
+            <div className="launcher-actions">
+              {showWindowsDownload() && (
+                <a className="btn btn-secondary btn-block" href={WINDOWS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+                  Commander Link herunterladen
+                </a>
+              )}
+              <a className="btn btn-secondary btn-block" href={browserUrl}>
+                Im Browser fortfahren
+              </a>
+            </div>
+          </>
+        )}
+      </div>
     </main>
   );
 }

@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+
+const mainSource = fs.readFileSync(path.join(__dirname, "main.tsx"), "utf8");
 
 describe("app launcher route", () => {
   const APP_LAUNCHER_PATH = /^\/app\/([A-Za-z0-9_-]{20,128})$/;
@@ -40,11 +44,19 @@ describe("app launcher route", () => {
     expect(currentRoomId("/app/")).toBeNull();
   });
 
-  it("preserves query parameters by not stripping them from the path", () => {
-    // Note: In actual implementation, query params would be preserved separately
-    // This test verifies the basic path matching works
+  it("preserves query parameters and fragments for browser fallback", () => {
     const roomId = "bb63eaf988d4415e8f23413c4eeb566";
     expect(currentRoomId(`/app/${roomId}`)).toBe(roomId);
+    expect(mainSource).toContain('`/r/${roomId}${window.location.search}${window.location.hash}`');
+  });
+
+  it("keeps the launcher as a minimal protocol handoff", () => {
+    const launcherSource = mainSource.slice(mainSource.indexOf("function AppLauncherView"), mainSource.indexOf("function HomeView"));
+    expect(launcherSource).toContain("iframe.src = deepLinkUrl");
+    expect(launcherSource).toContain("window.close()");
+    expect(launcherSource).toContain("setFallbackVisible(true)");
+    expect(launcherSource).not.toContain("<JoinView");
+    expect(launcherSource).not.toContain("Mikrofon");
   });
 });
 

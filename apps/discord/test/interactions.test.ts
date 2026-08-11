@@ -307,7 +307,7 @@ describe("handleInteractions room creation", () => {
     expect(init.headers.Authorization).toBe("Bearer it-is-a-secret");
   });
 
-  it("publishes a browser URL and an HTTPS app launcher URL for the same room", async () => {
+  it("publishes one copyable browser URL and keeps the app launcher in buttons", async () => {
     const roomId = "bb63eaf988d4415e8f23413c4eeb566";
     const inviteUrl = `https://commander-link.joinoops.win/r/${roomId}`;
     mockApiFetch(201, {
@@ -322,13 +322,17 @@ describe("handleInteractions room creation", () => {
     expect(status).toBe(200);
     const content = (body as { data: { content: string } }).data.content;
     expect(content).toContain(inviteUrl);
-    // App launcher should be an HTTPS URL, not a raw custom protocol
+    expect(content).toContain(`\`\`\`\n${inviteUrl}\n\`\`\``);
+    expect(content).toContain(`\n${inviteUrl}\n`);
     const appLauncherUrl = `https://commander-link.joinoops.win/app/${roomId}`;
-    expect(content).toContain(appLauncherUrl);
+    expect(content).not.toContain(appLauncherUrl);
     // Should NOT contain the raw custom protocol
     expect(content).not.toContain("commanderlink://");
-    // The room id appears in both links
-    expect(content).toContain(roomId);
+    const response = body as { data: { components: Array<{ components: Array<{ label: string; url?: string }> }> } };
+    const buttons = response.data.components[0].components;
+    expect(buttons.map((button) => button.label)).toContain("In der App öffnen");
+    expect(buttons.find((button) => button.label === "In der App öffnen")?.url).toBe(appLauncherUrl);
+    expect(buttons.find((button) => button.label === "Im Browser öffnen")?.url).toBe(inviteUrl);
   });
 
   it("creates exactly one Commander Link room for an authorized Guild B user", async () => {
@@ -464,18 +468,16 @@ describe("validateGuildConfig", () => {
 // ---------------------------------------------------------------------------
 
 describe("roomCreatedResponse", () => {
-  it("embeds both the browser invite and an HTTPS app launcher for the same room", () => {
+  it("embeds one copyable browser invite and button launchers for the same room", () => {
     const roomId = "bb63eaf988d4415e8f23413c4eeb566";
     const inviteUrl = `https://commander-link.joinoops.win/r/${roomId}`;
     const response = roomCreatedResponse(inviteUrl, roomId);
     const data = response as { data: { content: string; flags: number; components: unknown[] } };
     expect(data.data.content).toContain("Commander-Link-Raum erstellt");
-    expect(data.data.content).toContain("Im Browser öffnen");
-    expect(data.data.content).toContain(inviteUrl);
-    expect(data.data.content).toContain("In der Commander-Link-App öffnen");
-    // Should use HTTPS app launcher, not raw custom protocol
+    expect(data.data.content).toContain(`\`\`\`\n${inviteUrl}\n\`\`\``);
+    expect(data.data.content.split(inviteUrl)).toHaveLength(2);
     const appLauncherUrl = `https://commander-link.joinoops.win/app/${roomId}`;
-    expect(data.data.content).toContain(appLauncherUrl);
+    expect(data.data.content).not.toContain(appLauncherUrl);
     expect(data.data.content).not.toContain("commanderlink://");
     expect(data.data.flags).toBe(1 << 6); // ephemeral
     expect(data.data.components).toBeTruthy();
@@ -487,10 +489,10 @@ describe("roomCreatedResponse", () => {
     }>;
     expect(components).toHaveLength(1);
     expect(components[0].components).toHaveLength(3);
-    expect(components[0].components[0].label).toBe("Im Browser öffnen");
-    expect(components[0].components[0].url).toBe(inviteUrl);
-    expect(components[0].components[1].label).toBe("In der App öffnen");
-    expect(components[0].components[1].url).toBe(appLauncherUrl);
+    expect(components[0].components[0].label).toBe("In der App öffnen");
+    expect(components[0].components[0].url).toBe(appLauncherUrl);
+    expect(components[0].components[1].label).toBe("Im Browser öffnen");
+    expect(components[0].components[1].url).toBe(inviteUrl);
     expect(components[0].components[2].label).toBe("An Commander senden");
     expect(components[0].components[2].custom_id).toContain(roomId);
   });
@@ -505,13 +507,13 @@ describe("roomCreatedResponse", () => {
       data: { components: Array<{ components: Array<{ label: string }> }> };
     };
     expect(withChannel.data.components[0].components.map((button) => button.label)).toEqual([
-      "Im Browser öffnen",
       "In der App öffnen",
+      "Im Browser öffnen",
       "An Commander senden",
     ]);
     expect(withoutChannel.data.components[0].components.map((button) => button.label)).toEqual([
-      "Im Browser öffnen",
       "In der App öffnen",
+      "Im Browser öffnen",
     ]);
   });
 });

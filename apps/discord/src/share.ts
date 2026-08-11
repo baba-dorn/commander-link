@@ -98,7 +98,7 @@ async function publishRoom(roomId: string, creatorName: string | undefined, env:
   const webBase = (env.commanderLinkWebUrl || base).replace(/\/+$/, "");
   const inviteUrl = `${webBase}/r/${roomId}`;
   const appLauncherUrl = `${webBase}/app/${roomId}`;
-  const content = `Commander Link\n\n${creatorName || "Ein Commander"} hat einen Commander-Link-Raum geöffnet.\n\nIm Browser öffnen: ${inviteUrl}\nIn der Commander-Link-App öffnen: ${appLauncherUrl}\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`;
+  const content = `✅ Commander-Link-Raum erstellt\n\n📋 Link zum Teilen\n\`\`\`\n${inviteUrl}\n\`\`\`\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.`;
   const discordUrl = `https://discord.com/api/v10/channels/${encodeURIComponent(env.commanderChannelId!)}/messages`;
   const requestInit: RequestInit = {
       method: "POST",
@@ -112,8 +112,8 @@ async function publishRoom(roomId: string, creatorName: string | undefined, env:
           {
             type: 1,
             components: [
+              { type: 2, style: 5, label: "In der App öffnen", url: appLauncherUrl },
               { type: 2, style: 5, label: "Im Browser öffnen", url: inviteUrl },
-              { type: 2, style: 5, label: "In der Commander-Link-App öffnen", url: appLauncherUrl },
             ],
           },
         ],
