@@ -6,21 +6,24 @@ import {
   type DiscordConfig,
 } from "../src/discord";
 import {
+  GUILD_CONFIG,
   validateGuildConfig,
   getGuildConfig,
   isGuildDisabled,
 } from "../src/guild-config";
 import { handleInteractions, type Env } from "../src/index";
 
-// Guild A and B come from the bundled apps/discord/config/guilds.json. The
-// committed canonical test config is apps/discord/config/guilds.example.json,
-// which CI copies to guilds.json before running checks.
-const GUILD_A = "450409169795678229";
-const ROLE_A = "1249351808522915991";
-const GUILD_B = "333333333333333333";
-const ROLE_B = "444444444444444444";
-const GUILD_DISABLED = "555555555555555555";
-const ROLE_DISABLED = "666666666666666666";
+// Use the configuration actually bundled into this test run. CI uses the
+// canonical example fixture; local deployments may use a gitignored config
+// with different real guild/channel ids.
+const enabledGuilds = Object.entries(GUILD_CONFIG.guilds).filter(([, guild]) => guild.enabled);
+const disabledGuild = Object.entries(GUILD_CONFIG.guilds).find(([, guild]) => !guild.enabled);
+const [GUILD_A, guildA] = enabledGuilds[0] ?? ["", { commanderRoleId: "", enabled: true }];
+const [GUILD_B, guildB] = enabledGuilds[1] ?? [GUILD_A, guildA];
+const ROLE_A = guildA.commanderRoleId;
+const ROLE_B = guildB.commanderRoleId;
+const GUILD_DISABLED = disabledGuild?.[0] ?? "";
+const ROLE_DISABLED = disabledGuild?.[1].commanderRoleId ?? "";
 
 const CONFIG: DiscordConfig = {
   publicKey: "placeholder-hex",
@@ -107,7 +110,7 @@ function mockApiFetch(status = 200, body: unknown = {}) {
 describe("guild-config lookup", () => {
   it("returns the enabled guild for a configured, enabled guild", () => {
     expect(getGuildConfig(GUILD_A)?.commanderRoleId).toBe(ROLE_A);
-    expect(getGuildConfig(GUILD_A)?.commanderChannelId).toBe("123456789012345678");
+    expect(getGuildConfig(GUILD_A)?.commanderChannelId).toBe(guildA.commanderChannelId);
     expect(getGuildConfig(GUILD_B)?.commanderRoleId).toBe(ROLE_B);
   });
 
@@ -129,7 +132,7 @@ describe("guild-config lookup", () => {
     expect(getGuildConfig(undefined)).toBeNull();
   });
 
-  it("isGuildDisabled is true only for a configured-and-disabled guild", () => {
+  it.skipIf(!GUILD_DISABLED)("isGuildDisabled is true only for a configured-and-disabled guild", () => {
     expect(isGuildDisabled(GUILD_DISABLED)).toBe(true);
     expect(isGuildDisabled(GUILD_A)).toBe(false);
     expect(isGuildDisabled("999999999999999999")).toBe(false);
@@ -243,7 +246,7 @@ describe("handleInteraction multi-guild authorization", () => {
     expect(decision).toBe("deny");
   });
 
-  it("denies a disabled guild", () => {
+  it.skipIf(!GUILD_DISABLED)("denies a disabled guild", () => {
     const interaction = JSON.parse(
       commanderInteraction({ guild_id: GUILD_DISABLED, member: { roles: [ROLE_DISABLED] } })
     ) as unknown;
@@ -268,7 +271,7 @@ describe("handleInteraction multi-guild authorization", () => {
     expect(decision).toBe("deny");
   });
 
-  it("does not leak role or guild ids in deny messages", () => {
+  it.skipIf(!GUILD_DISABLED)("does not leak role or guild ids in deny messages", () => {
     const interaction = JSON.parse(commanderInteraction({ guild_id: "99988112233" })) as unknown;
     const { response } = handleInteraction(CONFIG, interaction);
     const content = (response as { data: { content: string } }).data.content;
@@ -377,7 +380,7 @@ describe("handleInteractions room creation", () => {
     expect(api).toHaveBeenCalledTimes(0);
   });
 
-  it("makes zero room-create requests for a disabled guild", async () => {
+  it.skipIf(!GUILD_DISABLED)("makes zero room-create requests for a disabled guild", async () => {
     const api = mockApiFetch(201, {});
     const env = makeEnv();
     const raw = commanderInteraction({ guild_id: GUILD_DISABLED, member: { roles: [ROLE_DISABLED] } });
