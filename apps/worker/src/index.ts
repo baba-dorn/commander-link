@@ -12,6 +12,7 @@ import {
 import { createVoiceBackend } from "./voice";
 import { VoiceBackendError } from "./voice/backend";
 import { authorizeRoomCreate } from "./room-create";
+import { evaluateLifecycle } from "./lifecycle";
 
 export interface Env {
   ROOMS: DurableObjectNamespace<RoomGate>;
@@ -39,11 +40,6 @@ interface RoomRecord {
   emptySince: number | null;
 }
 
-// Keep an empty room briefly so a quick reconnect does not lose the session.
-const GRACE_MS = 5 * 60 * 1000;
-// Periodic safety net: prune dead heartbeats and clean up orphaned/expired rooms.
-const CLEANUP_INTERVAL_MS = 2 * 60 * 1000;
-
 export type AdmitResult =
   | { ok: true; peerId: string; admissionId: string }
   | { ok: false; reason: "not_found" | "expired" | "full" };
@@ -68,9 +64,10 @@ export class RoomGate extends DurableObject<Env> {
     return (await this.ctx.storage.get<AdmissionLease[]>("admissions")) ?? [];
   }
 
-  private async ensureAlarm(): Promise<void> {
-    if ((await this.ctx.storage.getAlarm()) === null) {
-      await this.ctx.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
+  private async scheduleAlarm(room: RoomRecord, leases: AdmissionLease[], now = Date.now()): Promise<void> {
+    const decision = evaluateLifecycle(room, leases, now);
+    if (decision.nextAlarmAt !== null) {
+      await this.ctx.storage.setAlarm(decision.nextAlarmAt);
     }
   }
 
@@ -83,7 +80,7 @@ export class RoomGate extends DurableObject<Env> {
       everOccupied: false,
       emptySince: null,
     });
-    await this.ensureAlarm();
+    await this.scheduleAlarm({ expiresAt, everOccupied: false, emptySince: null, createdAt: 0, roomId }, []);
   }
 
   async meta(): Promise<RoomMetadata> {
@@ -132,7 +129,7 @@ export class RoomGate extends DurableObject<Env> {
       room.emptySince = null;
       await this.ctx.storage.put("room", room);
     }
-    await this.ensureAlarm();
+    await this.scheduleAlarm(room, decision.leases);
     return {
       ok: true,
       peerId: decision.lease.peerId,
@@ -146,24 +143,25 @@ export class RoomGate extends DurableObject<Env> {
     if (!existing) return { ok: false };
     existing.lastSeen = Date.now();
     await this.ctx.storage.put("admissions", pruneLeases(leases, Date.now()));
-    await this.ensureAlarm();
+    await this.scheduleAlarm(room ?? { expiresAt: Number.MAX_SAFE_INTEGER, everOccupied: false, emptySince: null, createdAt: 0, roomId: "" }, leases);
     return { ok: true };
   }
 
   async leave(admissionId: string): Promise<{ ok: boolean }> {
+    const now = Date.now();
     const next = pruneLeases(
       (await this.getLeases()).filter((lease) => lease.admissionId !== admissionId),
-      Date.now()
+      now
     );
     await this.ctx.storage.put("admissions", next);
+    const room = await this.getRoom();
     if (next.length === 0) {
-      const room = await this.getRoom();
       if (room && room.emptySince === null) {
-        room.emptySince = Date.now();
+        room.emptySince = now;
         await this.ctx.storage.put("room", room);
       }
     }
-    await this.ensureAlarm();
+    if (room) await this.scheduleAlarm(room, next, now);
     return { ok: true };
   }
 
@@ -179,35 +177,25 @@ export class RoomGate extends DurableObject<Env> {
     if (!room) return;
 
     const now = Date.now();
-    const leases = pruneLeases(await this.getLeases(), now);
-    await this.ctx.storage.put("admissions", leases);
+    const allLeases = await this.getLeases();
+    const decision = evaluateLifecycle(room, allLeases, now);
+    await this.ctx.storage.put("admissions", decision.activeLeases);
+    console.log("[room_cleanup] room_cleanup_started", {
+      roomId: room.roomId,
+      participantsActive: decision.activeLeases.length,
+      participantsExpired: decision.participantsExpired,
+      emptySince: decision.emptySince,
+      lastActivityAt: decision.lastActivityAt,
+    });
 
-    const expired = now >= room.expiresAt;
-
-    if (leases.length > 0 && !expired) {
-      if (room.emptySince !== null) {
-        room.emptySince = null;
-        await this.ctx.storage.put("room", room);
-      }
-      await this.ctx.storage.setAlarm(now + CLEANUP_INTERVAL_MS);
-      return;
+    if (room.emptySince !== decision.emptySince) {
+      room.emptySince = decision.emptySince;
+      await this.ctx.storage.put("room", room);
     }
 
-    if (!expired) {
-      // A room that was never joined lives until its TTL; only a used room is
-      // cleaned up after the empty grace period.
-      if (!room.everOccupied) {
-        await this.ctx.storage.setAlarm(now + CLEANUP_INTERVAL_MS);
-        return;
-      }
-      if (room.emptySince === null) {
-        room.emptySince = now;
-        await this.ctx.storage.put("room", room);
-      }
-      if (now - room.emptySince < GRACE_MS) {
-        await this.ctx.storage.setAlarm(now + CLEANUP_INTERVAL_MS);
-        return;
-      }
+    if (!decision.deleteRoom) {
+      if (decision.nextAlarmAt !== null) await this.ctx.storage.setAlarm(decision.nextAlarmAt);
+      return;
     }
 
     // Grace elapsed or room expired: delete the Commander Link room. We do not
@@ -215,6 +203,7 @@ export class RoomGate extends DurableObject<Env> {
     // from inside the alarm handler (it throws); simply returning without
     // setAlarm() leaves no pending alarm.
     await this.ctx.storage.deleteAll();
+    console.log("[room_cleanup] room_cleanup_completed", { roomId: room.roomId });
   }
 }
 
