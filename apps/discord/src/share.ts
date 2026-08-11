@@ -187,6 +187,12 @@ async function publishRoom(roomId: string, creatorName: string | undefined, env:
     : undefined;
   if (!messageId) throw new ShareError("channel_unavailable");
 
+  console.log("[discord_cleanup] discord_message_published", {
+    guildId: env.guildId,
+    channelId: env.commanderChannelId,
+    messageId,
+  });
+
   await env.invitationTracking.put(invitationKey(roomId), JSON.stringify({
     roomId,
     guildId: env.guildId,
@@ -194,6 +200,7 @@ async function publishRoom(roomId: string, creatorName: string | undefined, env:
     messageId,
     createdAt: new Date().toISOString(),
   } satisfies SharedInvitation));
+  console.log("[discord_cleanup] tracking_stored", { roomId, messageId });
   return "shared" as const;
 }
 
@@ -248,10 +255,25 @@ export async function cleanupExpiredInvitations(env: Pick<ShareEnvironment, "com
         } catch { /* safe diagnostics only */ }
       }
       if (!deletion.ok && !(deletion.status === 404 || String(deletionCode) === "10008")) {
+        console.error("[discord_cleanup] discord_cleanup", {
+          guildId: record.guildId,
+          channelId: record.channelId,
+          messageId: record.messageId,
+          status: deletion.status,
+          success: false,
+        });
         console.error("[discord-cleanup] discord deletion failed", { roomId: record.roomId, messageId: record.messageId, status: deletion.status, discordCode: deletionCode });
         continue;
       }
+      console.log("[discord_cleanup] discord_cleanup", {
+        guildId: record.guildId,
+        channelId: record.channelId,
+        messageId: record.messageId,
+        status: deletion.status,
+        success: true,
+      });
       await env.invitationTracking.delete(invitationKey(record.roomId));
+      console.log("[discord_cleanup] tracking_cleanup", { roomId: record.roomId, messageId: record.messageId, success: true });
       console.log("[discord-cleanup] deleted expired invitation", { roomId: record.roomId, messageId: record.messageId });
     }
     cursor = page.list_complete ? undefined : page.cursor;

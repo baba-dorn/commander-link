@@ -141,9 +141,12 @@ export class RoomGate extends DurableObject<Env> {
     const leases = await this.getLeases();
     const existing = leases.find((lease) => lease.admissionId === admissionId);
     if (!existing) return { ok: false };
-    existing.lastSeen = Date.now();
-    await this.ctx.storage.put("admissions", pruneLeases(leases, Date.now()));
-    await this.scheduleAlarm(room ?? { expiresAt: Number.MAX_SAFE_INTEGER, everOccupied: false, emptySince: null, createdAt: 0, roomId: "" }, leases);
+    const now = Date.now();
+    existing.lastSeen = now;
+    const activeLeases = pruneLeases(leases, now);
+    await this.ctx.storage.put("admissions", activeLeases);
+    const room = await this.getRoom();
+    if (room) await this.scheduleAlarm(room, activeLeases, now);
     return { ok: true };
   }
 

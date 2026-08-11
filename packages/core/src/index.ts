@@ -132,7 +132,9 @@ export const LEASE_IDLE_MS = 5 * 60 * 1000;
 
 export function pruneLeases(leases: AdmissionLease[], now: number): AdmissionLease[] {
   const cutoff = now - LEASE_IDLE_MS;
-  return leases.filter((lease) => lease.lastSeen >= cutoff);
+  // At the exact idle deadline the lease is expired. This makes the cleanup
+  // boundary deterministic: five minutes means >= 5 minutes of inactivity.
+  return leases.filter((lease) => lease.lastSeen > cutoff);
 }
 
 export type AdmissionReason = "full";
