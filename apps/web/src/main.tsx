@@ -582,6 +582,7 @@ function JoinView({ roomId }: { roomId: string }) {
   const controllerRef = useRef<PttController | null>(null);
   const sessionRef = useRef<JoinRoomResponse | null>(null);
   const joinInFlightRef = useRef(false);
+  const pendingLeaveRef = useRef<{ roomId: string; timer: number } | null>(null);
 
   useEffect(() => {
     const bridge = getBridge();
@@ -686,6 +687,13 @@ function JoinView({ roomId }: { roomId: string }) {
   // Heartbeat + leave lifecycle.
   useEffect(() => {
     if (!joined) return;
+    // React.StrictMode intentionally runs effect cleanup and setup back to back
+    // in development. Do not interpret that probe as a real room departure.
+    const pendingLeave = pendingLeaveRef.current;
+    if (pendingLeave?.roomId === roomId) {
+      window.clearTimeout(pendingLeave.timer);
+      pendingLeaveRef.current = null;
+    }
     const timer = window.setInterval(() => {
       const session = sessionRef.current;
       if (session) sendHeartbeat(roomId, session.admissionId);
@@ -699,9 +707,24 @@ function JoinView({ roomId }: { roomId: string }) {
       window.clearInterval(timer);
       window.removeEventListener("pagehide", onUnload);
       const session = sessionRef.current;
-      if (session) void leaveRoom(roomId, session.admissionId).catch(() => {});
-      controllerRef.current?.release();
-      void connectionRef.current?.disconnect();
+      const connection = connectionRef.current;
+      if (session) {
+        // Let StrictMode's immediate cleanup/setup pair cancel this task. A
+        // real unmount or room change still leaves on the next event-loop turn.
+        const leaveTimer = window.setTimeout(() => {
+          pendingLeaveRef.current = null;
+          if (sessionRef.current?.admissionId === session.admissionId) {
+            sessionRef.current = null;
+          }
+          void leaveRoom(roomId, session.admissionId).catch(() => {});
+          controllerRef.current?.release();
+          void connection?.disconnect();
+        }, 0);
+        pendingLeaveRef.current = { roomId, timer: leaveTimer };
+      } else {
+        controllerRef.current?.release();
+        void connection?.disconnect();
+      }
     };
   }, [joined, roomId]);
 
