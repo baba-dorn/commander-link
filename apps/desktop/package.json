@@ -13,6 +13,7 @@
     "dist:win": "pnpm build && electron-builder --win --publish never --config electron-builder.config.cjs"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "uiohook-napi": "^1.5.4"
   },
   "devDependencies": {

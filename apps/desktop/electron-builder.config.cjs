@@ -33,6 +33,10 @@ const config = {
   // It cannot load from inside the packed asar archive, so it must be unpacked.
   asarUnpack: ["**/node_modules/uiohook-napi/**"],
   protocols: [{ name: "Commander Link", schemes: ["commanderlink"] }],
+  // GitHub Releases feed for electron-updater. Building emits `latest.yml`
+  // alongside the installer so the packaged app's "Nach Updates suchen" can
+  // discover and download newer releases. Publishing stays manual (`--publish never`).
+  publish: [{ provider: "github", owner: "baba-dorn", repo: "commander-link" }],
   win: {
     target: [{ target: "nsis", arch: ["x64"] }],
     // Icon is optional: packaging falls back to the Electron default until a

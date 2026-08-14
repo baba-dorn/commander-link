@@ -4,6 +4,21 @@ import fs from "node:fs";
 import { uIOhook, UiohookKey, type UiohookKeyboardEvent, type UiohookMouseEvent } from "uiohook-napi";
 import type { PttBinding, PttSettings } from "@commander-link/core" with { "resolution-mode": "import" };
 import { deepLinkFromArgv, roomFromDeepLink } from "./deep-link";
+import { buildAppMenu } from "./menu";
+import { checkForUpdates } from "./updater";
+
+// Modifier keys are never captured as a standalone PTT binding: capturing waits
+// for the actual key so combinations like Ctrl+Shift+Ü can be recorded.
+const MODIFIER_KEYCODES = new Set<number>([
+  UiohookKey.Ctrl, UiohookKey.CtrlRight,
+  UiohookKey.Alt, UiohookKey.AltRight,
+  UiohookKey.Shift, UiohookKey.ShiftRight,
+  UiohookKey.Meta, UiohookKey.MetaRight,
+]);
+
+function isModifierKeycode(keycode: number): boolean {
+  return MODIFIER_KEYCODES.has(keycode);
+}
 
 const DEV_WEB_URL = "http://localhost:5173";
 const PROD_WEB_URL = "https://commander-link.joinoops.win";
@@ -161,6 +176,9 @@ function processInput(event: UiohookKeyboardEvent | UiohookMouseEvent, pressed: 
         mainWindow?.webContents.send("ptt:captureCancelled");
         return;
       }
+      // A lone modifier keydown does not finish capture; the currently held
+      // modifiers are attached to the next non-modifier key by keyboardBinding.
+      if (pressed && "keycode" in event && isModifierKeycode(event.keycode)) return;
       if (pressed && (("keycode" in event && event.keycode !== UiohookKey.Escape) || ("button" in event && Number(event.button) >= 4 && Number(event.button) <= 5))) {
         const binding = "keycode" in event ? bindingForKeyboard(event) : mouseBinding(Number(event.button));
         capturing = false;
@@ -293,8 +311,11 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     setupDebugLogStream();
+    buildAppMenu(() => mainWindow);
     createWindow();
     startGlobalPtt();
+    // Silent startup check: only surfaces UI if an update is actually available.
+    checkForUpdates(false, mainWindow);
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

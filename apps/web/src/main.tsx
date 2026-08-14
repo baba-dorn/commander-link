@@ -379,7 +379,7 @@ function DesktopSettings() {
             <h3>Push-to-Talk</h3>
             <div className="settings-row"><span>PTT-Taste</span><code>{bindingLabel(settings.primaryPttBinding)}</code><button className="btn btn-secondary" onClick={() => startCapture("primary")}>Ändern</button></div>
             <div className="settings-row"><span>Alternative Taste</span><code>{bindingLabel(settings.secondaryPttBinding)}</code><div className="settings-actions"><button className="btn btn-secondary" onClick={() => startCapture("secondary")}>Ändern</button>{settings.secondaryPttBinding && <button className="btn btn-quiet" onClick={() => update({ ...settings, secondaryPttBinding: null })}>Entfernen</button>}</div></div>
-            {capture && <p className="settings-capture">Gewünschte Taste drücken … <small>Esc = Abbrechen</small></p>}
+            {capture && <p className="settings-capture">Gewünschte Taste oder Kombination (z. B. Strg + Shift + Ü) drücken … <small>Esc = Abbrechen</small></p>}
             {captureError && <p className="error">{captureError}</p>}
             <h3>Mikrofon</h3>
             <label className="settings-field"><span>Gerät</span><select value={settings.microphoneDevice} onChange={(e) => update({ ...settings, microphoneDevice: e.target.value })}><option value="default">Systemstandard</option>{devices.filter((d) => d.kind === "audioinput" && d.deviceId !== "default").map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Mikrofon"}</option>)}</select></label>

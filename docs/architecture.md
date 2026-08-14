@@ -8,6 +8,13 @@ Owns room UI, microphone permission, participant rendering, browser PTT and audi
 ### Electron shell
 Owns OS integration only: global PTT, deep links, single-instance routing, packaging. Product/WebRTC logic stays shared.
 
+Global PTT bindings support modifier combinations (e.g. `Ctrl+Shift+Ü`). During capture a lone modifier keydown is ignored; the held modifiers are attached to the next non-modifier key, and at runtime a binding only clears when its base key is released (releasing a modifier first cannot leave the mic open).
+
+The default Electron menu is trimmed to **Datei / Ansicht / Hilfe**:
+- **Datei → Nach Updates suchen** and a silent check on startup use `electron-updater` against the GitHub Releases feed (`publish` config in `electron-builder.config.cjs`). The user consents before download; the update installs on restart or on next quit. In an unpackaged/dev build or on error it falls back to opening the GitHub releases page. See [apps/desktop/src/updater.ts](../apps/desktop/src/updater.ts).
+- **Hilfe → Discord-Anleitung** opens an offline help window ([apps/desktop/src/help-window.ts](../apps/desktop/src/help-window.ts)) explaining how to create a Discord voice room and bind the *same* key to Discord "Push to Mute", so holding PTT transmits in Commander Link while muting Discord.
+- **Hilfe → Über Commander Link** opens the repository in the browser.
+
 ### Cloudflare Worker
 Public API and secret boundary. Owns room creation, admission and cleanup routing. It depends only on the `VoiceBackend` interface — never on a concrete media provider.
 
