@@ -213,6 +213,14 @@ function routeToRoom(roomId: string): void {
   }
 }
 
+function isAllowedRendererUrl(rawUrl: string): boolean {
+  try {
+    return new URL(rawUrl).origin === new URL(WEB_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 460,
@@ -225,6 +233,20 @@ function createWindow(): void {
       sandbox: true,
     },
   });
+  // Electron denies renderer media permissions unless the app explicitly
+  // handles the request. Allow audio for our own hosted/dev renderer only;
+  // camera/video requests remain denied because Commander Link is audio-only.
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (webContents, permission, callback, details) => {
+      const requestingUrl = details?.requestingUrl ?? webContents.getURL();
+      const mediaTypes =
+        permission === "media" && details && "mediaTypes" in details
+          ? details.mediaTypes ?? []
+          : [];
+      const audioOnly = mediaTypes.length === 0 || mediaTypes.every((type) => type === "audio");
+      callback(permission === "media" && audioOnly && isAllowedRendererUrl(requestingUrl));
+    },
+  );
   if (DEBUG_LOGS) {
     // Pipe the renderer's console (including `[webrtc]` instrumentation) out of
     // the packaged window so `?debug=webrtc` is testable on a normal Windows PC.

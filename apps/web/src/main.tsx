@@ -10,6 +10,7 @@ import {
 } from "@commander-link/core";
 import "./styles.css";
 import { ApiError, joinRoom, leaveRoom, sendHeartbeat } from "./api";
+import { cleanupFailedJoin } from "./join-cleanup";
 import {
   createVoiceTransport,
   type ConnectionStatus,
@@ -580,6 +581,7 @@ function JoinView({ roomId }: { roomId: string }) {
   const connectionRef = useRef<VoiceTransport | null>(null);
   const controllerRef = useRef<PttController | null>(null);
   const sessionRef = useRef<JoinRoomResponse | null>(null);
+  const joinInFlightRef = useRef(false);
 
   useEffect(() => {
     const bridge = getBridge();
@@ -621,6 +623,11 @@ function JoinView({ roomId }: { roomId: string }) {
       setError("Bitte einen Anzeigenamen eingeben.");
       return;
     }
+    // The button is disabled while busy, but Enter can still submit through the
+    // input. Keep the admission request single-flight so one user action cannot
+    // reserve two leases and make the second request report "full".
+    if (joinInFlightRef.current) return;
+    joinInFlightRef.current = true;
     setBusy(true);
     setError(null);
 
@@ -662,8 +669,16 @@ function JoinView({ roomId }: { roomId: string }) {
         message = err.message;
       }
       setError(message);
+      // Admission happens before microphone access and MeteredPeer.join(). If
+      // either later step fails, release the reserved lease immediately. This
+      // is especially important in Electron where a denied media permission
+      // otherwise makes the next click look like a genuinely full room.
+      const failedSession = sessionRef.current;
+      sessionRef.current = null;
+      await cleanupFailedJoin(roomId, failedSession, connection, leaveRoom);
       connectionRef.current = null;
     } finally {
+      joinInFlightRef.current = false;
       setBusy(false);
     }
   }, [displayName, roomId, desktopSettings]);
