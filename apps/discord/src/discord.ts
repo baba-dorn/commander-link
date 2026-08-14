@@ -256,4 +256,31 @@ export function roomCreatedResponse(inviteUrl: string, roomId: string, sharingAv
   };
 }
 
+/**
+ * Update (type 7) the original ephemeral room message in place after a
+ * successful share: the "An Commander senden" button is removed and a
+ * confirmation is appended, so the command user keeps a single message instead
+ * of receiving a second follow-up. The two launch buttons are preserved.
+ */
+export function roomSharedResponse(inviteUrl: string): DiscordResponse {
+  const appLauncherUrl = inviteUrl.replace(/\/r\/([^/]+)$/, "/app/$1");
+
+  return {
+    type: 7,
+    data: {
+      content: `✅ Commander-Link-Raum erstellt\n\n📋 Link zum Teilen\n\`\`\`\n${inviteUrl}\n\`\`\`\n\nDer Raum läuft automatisch ab, wenn er nicht mehr benötigt wird.\n\n✅ An die Commander gesendet.`,
+      flags: EPHEMERAL,
+      components: [
+        {
+          type: 1,
+          components: [
+            { type: 2, style: 5, label: "In der App öffnen", url: appLauncherUrl },
+            { type: 2, style: 5, label: "Im Browser öffnen", url: inviteUrl },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 

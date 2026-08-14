@@ -1,4 +1,4 @@
-import { readConfig, verifyDiscordRequest, handleInteraction, roomCreatedResponse } from "./discord";
+import { readConfig, verifyDiscordRequest, handleInteraction, roomCreatedResponse, roomSharedResponse } from "./discord";
 import { createCommanderRoom, CommanderLinkError } from "./commander-link";
 import { cleanupExpiredInvitations, shareRoom, ShareError } from "./share";
 
@@ -72,10 +72,10 @@ export async function handleInteractions(request: Request, env: Env): Promise<Re
         commanderLinkWebUrl: env.COMMANDER_LINK_WEB_URL,
         invitationTracking: env.INVITATION_TRACKING,
       });
-      return json(200, {
-        type: 4,
-        data: { content: "✅ Raum wurde an die Commander gesendet.", flags: EPHEMERAL },
-      });
+      // Update the original ephemeral message in place (remove the share
+      // button, append the confirmation) instead of creating a second message.
+      const webBase = (env.COMMANDER_LINK_WEB_URL || env.COMMANDER_LINK_API_URL).replace(/\/+$/, "");
+      return json(200, roomSharedResponse(`${webBase}/r/${roomId}`));
     } catch (err) {
       if (err instanceof ShareError) console.error(`commander-room share failed reason=${err.message}`);
       else console.error("commander-room share failed unexpected");
