@@ -1,6 +1,6 @@
 {
   "name": "@commander-link/core",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": {"typecheck":"tsc --noEmit","build":"tsc --noEmit","test":"vitest run --passWithNoTests"},
